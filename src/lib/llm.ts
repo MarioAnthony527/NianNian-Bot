@@ -4,12 +4,12 @@ import { config } from "@/lib/config";
 import type { AnalyzeResult, ParsedDouyin, ReminderCopy, CommitmentWithVideo } from "@/lib/types";
 import { weekdayName } from "@/lib/time";
 
-const analyzeSchema = z.object({
+const rawAnalyzeSchema = z.object({
   is_real_commitment: z.boolean(),
   noise_reason: z.string().default(""),
   folder: z.enum(["美食", "身体", "工作", "知识", "关系", "杂物"]).default(DEFAULT_FOLDER),
-  commitment_summary: z.string().min(1).max(80),
-  executable_steps: z.array(z.string()).min(1).max(5),
+  commitment_summary: z.string().default(""),
+  executable_steps: z.array(z.string()).default([]),
   estimated_cost: z.string().default("15分钟"),
   best_push_window: z.string().default("随时"),
   tone_hint: z.string().default("实用型"),
@@ -66,9 +66,9 @@ async function chatJson<T>(input: {
 }
 
 export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult> {
-  return chatJson({
+  const raw = await chatJson({
     model: config.llmModelAnalyze,
-    schema: analyzeSchema,
+    schema: rawAnalyzeSchema,
     temperature: 0.2,
     system:
       "你是一个理解抖音视频背后用户意图的 AI 分析师。只输出严格 JSON，不要 Markdown。无法判断时倾向娱乐，避免打扰用户。",
@@ -96,6 +96,21 @@ export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult>
 承诺标准：包含教程、方法、清单、行动指令、可重复练习。纯搞笑、八卦、审美、明星动态是娱乐。
 禁止编造视频中没有的信息。步骤必须具体。`,
   });
+
+  if (!raw.is_real_commitment) {
+    return {
+      ...raw,
+      noise_reason: raw.noise_reason || "更像刷过就好的内容",
+      commitment_summary: raw.commitment_summary || "非承诺内容",
+      executable_steps: raw.executable_steps.length ? raw.executable_steps : ["无需提醒"],
+    };
+  }
+
+  return {
+    ...raw,
+    commitment_summary: raw.commitment_summary || parsed.title || "待整理的承诺",
+    executable_steps: raw.executable_steps.length ? raw.executable_steps : ["先看一遍内容", "选一个最小动作", "今天完成一次"],
+  };
 }
 
 export async function generateReminderCopy(commitment: CommitmentWithVideo): Promise<ReminderCopy> {

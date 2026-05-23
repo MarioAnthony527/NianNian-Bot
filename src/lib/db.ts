@@ -71,6 +71,19 @@ export async function upsertVideo(userId: string, parsed: ParsedDouyin) {
 
 export async function createCommitment(userId: string, videoId: string, analysis: AnalyzeResult) {
   const supabase = supabaseAdmin();
+  const { data: existing, error: existingError } = await supabase
+    .from("commitments")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("video_id", videoId)
+    .neq("status", "failed")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<Commitment>();
+
+  if (existingError) throw existingError;
+  if (existing) return existing;
+
   const status = analysis.is_real_commitment ? "pending" : "archived";
   const { data, error } = await supabase
     .from("commitments")
@@ -95,6 +108,19 @@ export async function createCommitment(userId: string, videoId: string, analysis
 
 export async function createDefaultReminder(userId: string, commitmentId: string) {
   const supabase = supabaseAdmin();
+  const { data: existing, error: existingError } = await supabase
+    .from("reminders")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("commitment_id", commitmentId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<Reminder>();
+
+  if (existingError) throw existingError;
+  if (existing) return existing;
+
   const { data, error } = await supabase
     .from("reminders")
     .insert({
