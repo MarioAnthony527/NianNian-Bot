@@ -9,6 +9,7 @@ export const config = {
   feishuAppId: readEnv("FEISHU_APP_ID"),
   feishuAppSecret: readEnv("FEISHU_APP_SECRET"),
   feishuVerificationToken: readEnv("FEISHU_VERIFICATION_TOKEN"),
+  feishuEncryptKey: readEnv("FEISHU_ENCRYPT_KEY"),
   llmApiBase: readEnv("LLM_API_BASE", "https://api.openai.com/v1"),
   llmApiKey: readEnv("LLM_API_KEY"),
   llmModelAnalyze: readEnv("LLM_MODEL_ANALYZE", "gpt-4o-mini"),
