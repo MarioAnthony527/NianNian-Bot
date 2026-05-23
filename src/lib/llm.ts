@@ -96,14 +96,14 @@ export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult>
       temperature: 0.25,
       system:
         "你是一个把抖音分享内容转成轻量提醒的 AI 分析师。只输出严格 JSON。黑客松 MVP 策略：除非链接完全不可读，否则都要给用户一个低压力、可放下的提醒。",
-      user: `把这条抖音分享转成一个可提醒的承诺。如果它是教程/知识/方法，就提炼真实行动；如果它偏娱乐/审美/图文，就转成“回看这条灵感并决定是否要做”的轻量提醒，不要直接丢弃。
+      user: `把这条抖音分享转成一个可提醒的承诺。如果它是教程/知识/方法，就提炼真实行动；如果它偏娱乐/审美/图文，就转成"回看这条灵感并决定是否要做"的轻量提醒，不要直接丢弃。
 
 【视频信息】
 - 标题: ${parsed.title}
 - 描述: ${parsed.description}
 - 作者: ${parsed.author || "未知"}
 - 标签: ${parsed.tags.join(", ") || "无"}
-- 视频内容/分享文案: ${parsed.asrText || parsed.description}
+- 视频前段字幕（机器转写，可能不完整）: ${parsed.asrText || "（未拿到字幕，请基于上面文案推断）"}
 
 【输出 JSON】
 {
@@ -118,8 +118,9 @@ export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult>
 }
 
 要求：
+- 优先信任字幕里说出来的具体动作，再用标题/描述/标签补全。
 - 任何可读分享都尽量进入提醒队列。
-- 纯娱乐也可以变成“5分钟回看并决定是否放下”。
+- 纯娱乐也可以变成"5分钟回看并决定是否放下"。
 - 不要编造视频里没有的专业步骤。`,
     });
 

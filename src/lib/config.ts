@@ -16,6 +16,12 @@ export const config = {
   llmModelCopy: readEnv("LLM_MODEL_COPY", "gpt-4o-mini"),
   douyinParserBaseUrl: readEnv("DOUYIN_PARSER_BASE_URL"),
   demoSecret: readEnv("DEMO_SECRET", "demo-local"),
+  enableAsr: readEnv("ENABLE_ASR", "true") !== "false",
+  asrProvider: readEnv("ASR_PROVIDER", "whisper") as "whisper" | "doubao",
+  asrModel: readEnv("ASR_MODEL", "whisper-1"),
+  asrClipBytes: Number(readEnv("ASR_CLIP_BYTES", "3000000")),
+  volcAppKey: readEnv("VOLC_APP_KEY"),
+  volcAccessKey: readEnv("VOLC_ACCESS_KEY"),
 };
 
 export function assertServerEnv() {

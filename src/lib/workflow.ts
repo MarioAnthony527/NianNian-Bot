@@ -11,6 +11,7 @@ import {
   upsertVideo,
 } from "@/lib/db";
 import { extractUrls, parseDouyinUrl } from "@/lib/douyin";
+import { transcribeClip } from "@/lib/asr";
 import { extractFolderDirective } from "@/lib/folders";
 import { analysisCard, processingCard, reminderCard, replyFeishuCard, sendFeishuCard, sendFeishuText } from "@/lib/feishu";
 import { analyzeVideo, generateReminderCopy } from "@/lib/llm";
@@ -47,13 +48,38 @@ export async function handleIncomingFeishuMessage(input: {
 
   try {
     const parsed = await parseDouyinUrl(urls[0], input.text);
+
+    // Best-effort: transcribe the first slice of audio so the LLM has something
+    // closer to the actual video content. Always falls back to text-only.
+    const transcript = await transcribeClip(parsed.playAddr).catch((error) => {
+      console.warn("transcribeClip threw", error);
+      return null;
+    });
+    if (transcript?.text) {
+      parsed.asrText = transcript.text;
+    }
+    parsed.rawMetadata = {
+      ...parsed.rawMetadata,
+      asrSource: transcript?.source ?? "skipped",
+      asrSkipReason: transcript?.skipReason,
+      asrBytes: transcript?.bytesDownloaded ?? 0,
+      asrTruncated: transcript?.truncated ?? false,
+    };
+
     const video = await upsertVideo(user.id, parsed);
     const analysis = await analyzeVideo(parsed);
     if (requestedFolder) analysis.folder = requestedFolder;
     const commitment = await createCommitment(user.id, video.id, analysis, { forceFolder: Boolean(requestedFolder) });
     const full = (await getCommitment(commitment.id)) as CommitmentWithVideo;
 
-    await logEvent(user.id, "video_processed", { video_id: video.id, commitment_id: commitment.id, analysis });
+    await logEvent(user.id, "video_processed", {
+      video_id: video.id,
+      commitment_id: commitment.id,
+      analysis,
+      asr_source: transcript?.source ?? "skipped",
+      asr_skip_reason: transcript?.skipReason,
+      asr_chars: transcript?.text.length ?? 0,
+    });
 
     await createDefaultReminder(user.id, commitment.id);
     const withReminder = (await getCommitment(commitment.id)) as CommitmentWithVideo;
