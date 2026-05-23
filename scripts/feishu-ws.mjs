@@ -35,6 +35,14 @@ function normalizeEvent(data) {
   };
 }
 
+function messageInfo(data) {
+  const message = data?.event?.message ?? data?.message ?? {};
+  return {
+    id: message.message_id ?? null,
+    createdAt: Number(message.create_time ?? 0),
+  };
+}
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",
@@ -54,10 +62,23 @@ const appId = requireEnv("FEISHU_APP_ID");
 const appSecret = requireEnv("FEISHU_APP_SECRET");
 const appUrl = requireEnv("NEXT_PUBLIC_APP_URL").replace(/\/$/, "");
 const forwardUrl = (process.env.FEISHU_WORKER_FORWARD_URL || appUrl).replace(/\/$/, "");
+const workerStartedAt = Date.now();
+const seenMessageIds = new Set();
 
 const eventDispatcher = new lark.EventDispatcher({}).register({
   "im.message.receive_v1": async (data) => {
-    console.log("[feishu-ws] received message event");
+    const message = messageInfo(data);
+    if (message.createdAt && message.createdAt < workerStartedAt - 120_000) {
+      console.log("[feishu-ws] ignored stale message event", message.id ?? "unknown");
+      return {};
+    }
+    if (message.id && seenMessageIds.has(message.id)) {
+      console.log("[feishu-ws] ignored duplicate message event", message.id);
+      return {};
+    }
+    if (message.id) seenMessageIds.add(message.id);
+
+    console.log("[feishu-ws] received message event", message.id ?? "unknown");
     postJson(`${forwardUrl}/api/internal/feishu-message`, normalizeEvent(data)).catch((error) => {
       console.error("[feishu-ws] message forward failed", error);
     });

@@ -284,6 +284,20 @@ export async function deleteCommitment(id: string) {
   if (error) throw error;
 }
 
+export async function hasProcessedFeishuMessage(messageId: string) {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase
+    .from("events")
+    .select("id")
+    .eq("event_type", "feishu_message_received")
+    .filter("payload->>message_id", "eq", messageId)
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+
+  if (error) throw error;
+  return Boolean(data);
+}
+
 export async function logEvent(userId: string | null, eventType: string, payload?: Record<string, unknown>) {
   const supabase = supabaseAdmin();
   await supabase.from("events").insert({

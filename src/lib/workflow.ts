@@ -4,6 +4,7 @@ import {
   deleteCommitment,
   getCommitment,
   getOrCreateUser,
+  hasProcessedFeishuMessage,
   logEvent,
   snoozeCommitment,
   updateCommitmentStatus,
@@ -29,6 +30,12 @@ export async function handleIncomingFeishuMessage(input: {
     feishuUserId: input.userId,
     name: input.name,
   });
+
+  if (input.messageId) {
+    const alreadyProcessed = await hasProcessedFeishuMessage(input.messageId);
+    if (alreadyProcessed) return;
+    await logEvent(user.id, "feishu_message_received", { message_id: input.messageId, text: input.text });
+  }
 
   const urls = extractUrls(input.text);
   const requestedFolder = extractFolderDirective(input.text);
