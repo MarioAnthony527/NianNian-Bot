@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { verifyFeishuToken } from "@/lib/feishu";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
@@ -11,7 +10,8 @@ export async function POST(request: NextRequest) {
     return Response.json({ challenge: body.challenge });
   }
 
-  if (!verifyFeishuToken(body.token ?? body.header?.token)) {
+  const expectedToken = process.env.FEISHU_VERIFICATION_TOKEN;
+  if (expectedToken && (body.token ?? body.header?.token) !== expectedToken) {
     return Response.json({ error: "invalid token" }, { status: 401 });
   }
 
@@ -23,13 +23,16 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "missing action or commitmentId" }, { status: 400 });
   }
 
-  const { handleCardAction } = await import("@/lib/workflow");
-  const message = await handleCardAction(action, commitmentId);
+  fetch(new URL("/api/internal/feishu-card-action", request.url), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action, commitmentId }),
+  }).catch((error) => console.error("Internal card action failed", error));
 
   return Response.json({
     toast: {
       type: "success",
-      content: message,
+      content: "已收到，正在处理",
     },
   });
 }

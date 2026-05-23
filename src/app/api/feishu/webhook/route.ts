@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { extractFeishuText, verifyFeishuToken } from "@/lib/feishu";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
@@ -11,31 +10,16 @@ export async function POST(request: NextRequest) {
     return Response.json({ challenge: body.challenge });
   }
 
-  if (!verifyFeishuToken(body.token ?? body.header?.token)) {
+  const expectedToken = process.env.FEISHU_VERIFICATION_TOKEN;
+  if (expectedToken && (body.token ?? body.header?.token) !== expectedToken) {
     return Response.json({ error: "invalid token" }, { status: 401 });
   }
 
-  const eventType = body.header?.event_type ?? body.type;
-  if (eventType !== "im.message.receive_v1") {
-    return Response.json({ ok: true, ignored: eventType ?? "unknown" });
-  }
-
-  const event = body.event ?? {};
-  const message = event.message ?? {};
-  const sender = event.sender ?? {};
-  const openId = sender.sender_id?.open_id ?? sender.sender_id?.union_id ?? event.open_id;
-  const userId = sender.sender_id?.user_id ?? null;
-  const messageId = message.message_id ?? null;
-  const text = extractFeishuText(message.content);
-
-  if (!openId) {
-    return Response.json({ error: "missing open_id" }, { status: 400 });
-  }
-
-  const { handleIncomingFeishuMessage } = await import("@/lib/workflow");
-  handleIncomingFeishuMessage({ openId, userId, messageId, text }).catch((error) => {
-    console.error("Feishu message handling failed", error);
-  });
+  fetch(new URL("/api/internal/feishu-message", request.url), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch((error) => console.error("Internal Feishu forward failed", error));
 
   return Response.json({ ok: true });
 }
