@@ -6,9 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "feishu:ws": "node scripts/feishu-ws.mjs"
   },
   "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.65.0",
     "@supabase/supabase-js": "^2.106.1",
     "date-fns": "^4.3.0",
     "lucide-react": "^1.16.0",
