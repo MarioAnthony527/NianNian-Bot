@@ -53,11 +53,15 @@ loadLocalEnv();
 const appId = requireEnv("FEISHU_APP_ID");
 const appSecret = requireEnv("FEISHU_APP_SECRET");
 const appUrl = requireEnv("NEXT_PUBLIC_APP_URL").replace(/\/$/, "");
+const forwardUrl = (process.env.FEISHU_WORKER_FORWARD_URL || appUrl).replace(/\/$/, "");
 
 const eventDispatcher = new lark.EventDispatcher({}).register({
   "im.message.receive_v1": async (data) => {
     console.log("[feishu-ws] received message event");
-    await postJson(`${appUrl}/api/internal/feishu-message`, normalizeEvent(data));
+    postJson(`${forwardUrl}/api/internal/feishu-message`, normalizeEvent(data)).catch((error) => {
+      console.error("[feishu-ws] message forward failed", error);
+    });
+    return {};
   },
   "card.action.trigger": async (data) => {
     const actionValue = data?.event?.action?.value ?? data?.action?.value ?? {};
@@ -65,7 +69,7 @@ const eventDispatcher = new lark.EventDispatcher({}).register({
     const commitmentId = actionValue.commitmentId;
     console.log("[feishu-ws] received card action", action, commitmentId);
     if (action && commitmentId) {
-      postJson(`${appUrl}/api/internal/feishu-card-action`, { action, commitmentId }).catch((error) => {
+      postJson(`${forwardUrl}/api/internal/feishu-card-action`, { action, commitmentId }).catch((error) => {
         console.error("[feishu-ws] card action forward failed", error);
       });
     }
@@ -85,5 +89,6 @@ const client = new lark.WSClient({
 });
 
 console.log(`[feishu-ws] connecting with app ${appId}`);
-console.log(`[feishu-ws] forwarding events to ${appUrl}`);
+console.log(`[feishu-ws] public app url ${appUrl}`);
+console.log(`[feishu-ws] forwarding events to ${forwardUrl}`);
 client.start({ eventDispatcher });
