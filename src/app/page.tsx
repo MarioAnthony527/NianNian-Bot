@@ -123,7 +123,7 @@ export default async function Home({ searchParams }: PageProps) {
 
       <nav className="mb-5 flex gap-2 overflow-x-auto pb-1">
         <Link href={dashboardHref()} className="shrink-0 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700">
-          全部 {allCommitments.length}
+          总览 {allCommitments.length}
         </Link>
         {folderNames.map((folderName) => {
           const folder = folderMeta(folderName);

@@ -11,6 +11,7 @@ import {
   updateReminderResponse,
   upsertVideo,
 } from "@/lib/db";
+import { DEFAULT_FOLDER } from "@/lib/constants";
 import { extractUrls, parseDouyinUrl } from "@/lib/douyin";
 import { extractFolderDirective } from "@/lib/folders";
 import { analysisCard, processingCard, reminderCard, replyFeishuCard, sendFeishuCard, sendFeishuText } from "@/lib/feishu";
@@ -56,7 +57,7 @@ export async function handleIncomingFeishuMessage(input: {
     const parsed = await parseDouyinUrl(urls[0], input.text);
     const video = await upsertVideo(user.id, parsed);
     const analysis = await analyzeVideo(parsed);
-    if (requestedFolder) analysis.folder = requestedFolder;
+    analysis.folder = requestedFolder ?? DEFAULT_FOLDER;
     const commitment = await createCommitment(user.id, video.id, analysis, { forceFolder: Boolean(requestedFolder) });
     const full = (await getCommitment(commitment.id)) as CommitmentWithVideo;
 

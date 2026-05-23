@@ -7,7 +7,7 @@ import { weekdayName } from "@/lib/time";
 const rawAnalyzeSchema = z.object({
   is_real_commitment: z.boolean().default(true),
   noise_reason: z.string().default(""),
-  folder: z.enum(["美食", "身体", "工作", "知识", "关系", "杂物"]).default(DEFAULT_FOLDER),
+  folder: z.enum(["全部", "美食", "身体", "工作", "知识", "关系", "杂物"]).default(DEFAULT_FOLDER),
   commitment_summary: z.string().default(""),
   executable_steps: z.array(z.string()).default([]),
   estimated_cost: z.string().default("15分钟"),
@@ -36,7 +36,7 @@ function fallbackAnalysis(parsed: ParsedDouyin, reason = ""): AnalyzeResult {
   return {
     is_real_commitment: true,
     noise_reason: reason,
-    folder: "杂物",
+    folder: DEFAULT_FOLDER,
     commitment_summary: `${subject}，判断是否要做`,
     executable_steps: ["打开原视频回看", "记下一个可做点", "不需要就放下"],
     estimated_cost: "5分钟",
@@ -109,7 +109,7 @@ export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult>
 {
   "is_real_commitment": true,
   "noise_reason": "",
-  "folder": "美食|身体|工作|知识|关系|杂物",
+  "folder": "全部|美食|身体|工作|知识|关系|杂物",
   "commitment_summary": "≤25字，必须非空",
   "executable_steps": ["≤15字，必须具体", "≤15字", "≤15字"],
   "estimated_cost": "5分钟|15分钟|半小时|半天|更长",
