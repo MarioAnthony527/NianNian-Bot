@@ -4,11 +4,13 @@ import {
   BriefcaseBusiness,
   Dumbbell,
   HeartHandshake,
+  Inbox,
   Package,
   Soup,
 } from "lucide-react";
 
 export const FOLDERS = [
+  { key: "全部", emoji: "🗂️", color: "bg-zinc-50 text-zinc-900 border-zinc-200", icon: Inbox },
   { key: "美食", emoji: "🍳", color: "bg-emerald-50 text-emerald-900 border-emerald-200", icon: Soup },
   { key: "身体", emoji: "💪", color: "bg-sky-50 text-sky-900 border-sky-200", icon: Dumbbell },
   { key: "工作", emoji: "👔", color: "bg-slate-50 text-slate-900 border-slate-200", icon: BriefcaseBusiness },
@@ -25,7 +27,7 @@ export const STATUS_META = {
   failed: { label: "处理失败", color: "bg-red-50 text-red-900 border-red-200" },
 } as const;
 
-export const DEFAULT_FOLDER = "杂物";
+export const DEFAULT_FOLDER = "全部";
 export const DEFAULT_PUSH_HOUR = 9;
 export const APP_NAME = "念念";
 export const ArchiveIcon = Archive;

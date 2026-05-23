@@ -10,14 +10,14 @@ export function normalizeFolderName(value: string | null | undefined) {
 }
 
 export function extractFolderDirective(text: string) {
-  const explicit = text.match(/(?:文件夹|分类|收藏夹)\s*[:：]\s*([^\s,，。#]{1,12})/);
+  const explicit = text.match(/(?:文件夹|分类|收藏夹)\s*[:：]\s*([^\s,，。；;#:/\\]{1,12}?)(?=\s|$|[，,。；;：:]|https?:\/\/)/u);
   if (explicit?.[1]) {
     return normalizeFolderName(explicit[1]);
   }
 
-  const leadingHash = text.match(/(?:^|\s)#([\p{L}\p{N}_\-\u4e00-\u9fff]{1,12})(?=\s|$)/u);
-  if (leadingHash?.[1]) {
-    return normalizeFolderName(leadingHash[1]);
+  const hashTag = text.match(/^\s*#([\p{L}\p{N}_\-\u4e00-\u9fff]{1,12}?)(?=\s|$|[，,。；;：:]|https?:\/\/)/u);
+  if (hashTag?.[1]) {
+    return normalizeFolderName(hashTag[1]);
   }
 
   return null;

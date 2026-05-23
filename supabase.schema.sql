@@ -33,7 +33,7 @@ create table if not exists commitments (
   video_id uuid references videos(id) on delete cascade not null,
   user_id uuid references users(id) on delete cascade not null,
   is_real_commitment boolean not null,
-  folder text not null default '杂物',
+  folder text not null default '全部',
   commitment_summary text not null default '',
   executable_steps jsonb not null default '[]'::jsonb,
   estimated_cost text not null default '15分钟',

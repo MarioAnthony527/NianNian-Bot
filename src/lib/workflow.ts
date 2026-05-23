@@ -4,12 +4,14 @@ import {
   deleteCommitment,
   getCommitment,
   getOrCreateUser,
+  hasProcessedFeishuMessage,
   logEvent,
   snoozeCommitment,
   updateCommitmentStatus,
   updateReminderResponse,
   upsertVideo,
 } from "@/lib/db";
+import { DEFAULT_FOLDER } from "@/lib/constants";
 import { extractUrls, parseDouyinUrl } from "@/lib/douyin";
 import { transcribeClip } from "@/lib/asr";
 import { extractFolderDirective } from "@/lib/folders";
@@ -30,6 +32,12 @@ export async function handleIncomingFeishuMessage(input: {
     feishuUserId: input.userId,
     name: input.name,
   });
+
+  if (input.messageId) {
+    const alreadyProcessed = await hasProcessedFeishuMessage(input.messageId);
+    if (alreadyProcessed) return;
+    await logEvent(user.id, "feishu_message_received", { message_id: input.messageId, text: input.text });
+  }
 
   const urls = extractUrls(input.text);
   const requestedFolder = extractFolderDirective(input.text);
@@ -68,7 +76,7 @@ export async function handleIncomingFeishuMessage(input: {
 
     const video = await upsertVideo(user.id, parsed);
     const analysis = await analyzeVideo(parsed);
-    if (requestedFolder) analysis.folder = requestedFolder;
+    analysis.folder = requestedFolder ?? DEFAULT_FOLDER;
     const commitment = await createCommitment(user.id, video.id, analysis, { forceFolder: Boolean(requestedFolder) });
     const full = (await getCommitment(commitment.id)) as CommitmentWithVideo;
 
