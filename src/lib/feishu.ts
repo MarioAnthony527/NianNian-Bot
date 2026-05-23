@@ -130,7 +130,8 @@ export function analysisCard(commitment: CommitmentWithVideo, user: User) {
       markdown(
         `这是关于「${commitment.commitment_summary}」的承诺\n\n` +
           `类型：${commitment.folder} · 估时：${commitment.estimated_cost}\n\n` +
-          `我把它放进了「${commitment.folder}」，明早 9 点提醒你。`,
+          `我把它放进了「${commitment.folder}」，明早 9 点提醒你。\n\n` +
+          `下次可以在链接前加 #旅行 或 文件夹:旅行，直接放进你自己的收藏夹。`,
       ),
       {
         tag: "action",

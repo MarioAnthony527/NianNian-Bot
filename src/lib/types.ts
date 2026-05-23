@@ -1,6 +1,6 @@
 export type CommitmentStatus = "pending" | "fulfilled" | "abandoned" | "archived" | "failed";
 export type ReminderStatus = "pending" | "sent" | "done" | "snoozed" | "skipped" | "failed";
-export type FolderName = "美食" | "身体" | "工作" | "知识" | "关系" | "杂物";
+export type FolderName = string;
 
 export type User = {
   id: string;

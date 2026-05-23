@@ -11,6 +11,7 @@ import {
   upsertVideo,
 } from "@/lib/db";
 import { extractUrls, parseDouyinUrl } from "@/lib/douyin";
+import { extractFolderDirective } from "@/lib/folders";
 import { analysisCard, processingCard, reminderCard, replyFeishuCard, sendFeishuCard, sendFeishuText } from "@/lib/feishu";
 import { analyzeVideo, generateReminderCopy } from "@/lib/llm";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -30,6 +31,7 @@ export async function handleIncomingFeishuMessage(input: {
   });
 
   const urls = extractUrls(input.text);
+  const requestedFolder = extractFolderDirective(input.text);
   if (!urls.length) {
     await sendFeishuText(input.openId, "发一条抖音分享链接给我，我会判断它是不是一个值得提醒的承诺。");
     return;
@@ -47,7 +49,8 @@ export async function handleIncomingFeishuMessage(input: {
     const parsed = await parseDouyinUrl(urls[0], input.text);
     const video = await upsertVideo(user.id, parsed);
     const analysis = await analyzeVideo(parsed);
-    const commitment = await createCommitment(user.id, video.id, analysis);
+    if (requestedFolder) analysis.folder = requestedFolder;
+    const commitment = await createCommitment(user.id, video.id, analysis, { forceFolder: Boolean(requestedFolder) });
     const full = (await getCommitment(commitment.id)) as CommitmentWithVideo;
 
     await logEvent(user.id, "video_processed", { video_id: video.id, commitment_id: commitment.id, analysis });

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { BarChart3, ExternalLink, Settings } from "lucide-react";
-import { FOLDERS, STATUS_META } from "@/lib/constants";
+import { STATUS_META } from "@/lib/constants";
 import { listCommitments } from "@/lib/db";
+import { defaultFolderNames, folderMeta } from "@/lib/folders";
 import { relativeTime } from "@/lib/time";
 import type { CommitmentWithVideo } from "@/lib/types";
 
@@ -75,14 +76,15 @@ function Section({
 export default async function Home({ searchParams }: PageProps) {
   const params = await searchParams;
   let commitments: CommitmentWithVideo[] = [];
+  let allCommitments: CommitmentWithVideo[] = [];
   let error = "";
 
   try {
-    commitments = await listCommitments({
+    allCommitments = await listCommitments({
       token: params.token,
-      folder: params.folder,
       status: params.status,
     });
+    commitments = params.folder ? allCommitments.filter((item) => item.folder === params.folder) : allCommitments;
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);
   }
@@ -91,6 +93,16 @@ export default async function Home({ searchParams }: PageProps) {
   const fulfilled = commitments.filter((item) => item.status === "fulfilled");
   const abandoned = commitments.filter((item) => item.status === "abandoned");
   const tokenQuery = params.token ? `?token=${params.token}` : "";
+  const folderNames = Array.from(new Set([...defaultFolderNames(), ...allCommitments.map((item) => item.folder).filter(Boolean)]));
+
+  function dashboardHref(folder?: string) {
+    const query = new URLSearchParams();
+    if (params.token) query.set("token", params.token);
+    if (params.status) query.set("status", params.status);
+    if (folder) query.set("folder", folder);
+    const serialized = query.toString();
+    return serialized ? `/?${serialized}` : "/";
+  }
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-5 sm:px-6 lg:px-8">
@@ -110,18 +122,22 @@ export default async function Home({ searchParams }: PageProps) {
       </header>
 
       <nav className="mb-5 flex gap-2 overflow-x-auto pb-1">
-        <Link href={`/${tokenQuery}`} className="shrink-0 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700">
-          全部 {commitments.length}
+        <Link href={dashboardHref()} className="shrink-0 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700">
+          全部 {allCommitments.length}
         </Link>
-        {FOLDERS.map((folder) => (
-          <Link
-            key={folder.key}
-            href={`/?${new URLSearchParams({ ...(params.token ? { token: params.token } : {}), folder: folder.key }).toString()}`}
-            className={`shrink-0 rounded-full border px-3 py-1.5 text-sm ${folder.color}`}
-          >
-            {folder.emoji} {folder.key} {commitments.filter((item) => item.folder === folder.key).length}
-          </Link>
-        ))}
+        {folderNames.map((folderName) => {
+          const folder = folderMeta(folderName);
+          const selected = params.folder === folderName;
+          return (
+            <Link
+              key={folder.key}
+              href={dashboardHref(folder.key)}
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-sm ${folder.color} ${selected ? "ring-2 ring-zinc-300" : ""}`}
+            >
+              {folder.emoji} {folder.key} {allCommitments.filter((item) => item.folder === folder.key).length}
+            </Link>
+          );
+        })}
       </nav>
 
       {error ? (

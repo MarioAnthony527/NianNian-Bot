@@ -1,9 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, Send } from "lucide-react";
-import { getCommitment } from "@/lib/db";
+import { getCommitment, listFoldersForUser } from "@/lib/db";
+import { defaultFolderNames } from "@/lib/folders";
 import { relativeTime } from "@/lib/time";
 import { DemoPushButton } from "@/components/DemoPushButton";
+import { FolderEditor } from "@/components/FolderEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +34,7 @@ export default async function CommitmentDetailPage({ params, searchParams }: Pag
 
   const steps = Array.isArray(commitment.executable_steps) ? commitment.executable_steps : [];
   const video = commitment.videos;
+  const folders = Array.from(new Set([...defaultFolderNames(), ...(await listFoldersForUser(commitment.user_id))]));
 
   return (
     <main className="mx-auto min-h-screen max-w-3xl px-4 py-6 sm:px-6">
@@ -77,6 +80,13 @@ export default async function CommitmentDetailPage({ params, searchParams }: Pag
                 <dd className="mt-1 text-zinc-900">{commitment.tone_hint}</dd>
               </div>
             </dl>
+          </section>
+
+          <section className="border-y border-zinc-100 py-4">
+            <FolderEditor commitmentId={commitment.id} currentFolder={commitment.folder} folders={folders} />
+            <p className="mt-2 text-xs leading-5 text-zinc-500">
+              也可以在飞书里把链接发成“#旅行 https://...”或“文件夹:旅行 https://...”，念念会直接放进对应收藏夹。
+            </p>
           </section>
 
           <section>

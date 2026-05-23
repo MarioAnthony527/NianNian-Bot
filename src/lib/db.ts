@@ -69,7 +69,12 @@ export async function upsertVideo(userId: string, parsed: ParsedDouyin) {
   return data;
 }
 
-export async function createCommitment(userId: string, videoId: string, analysis: AnalyzeResult) {
+export async function createCommitment(
+  userId: string,
+  videoId: string,
+  analysis: AnalyzeResult,
+  options?: { forceFolder?: boolean },
+) {
   const supabase = supabaseAdmin();
   const { data: existing, error: existingError } = await supabase
     .from("commitments")
@@ -82,7 +87,19 @@ export async function createCommitment(userId: string, videoId: string, analysis
     .maybeSingle<Commitment>();
 
   if (existingError) throw existingError;
-  if (existing) return existing;
+  if (existing) {
+    if (options?.forceFolder && existing.folder !== analysis.folder) {
+      const { data, error } = await supabase
+        .from("commitments")
+        .update({ folder: analysis.folder })
+        .eq("id", existing.id)
+        .select("*")
+        .single<Commitment>();
+      if (error) throw error;
+      return data;
+    }
+    return existing;
+  }
 
   const status = "pending";
   const { data, error } = await supabase
@@ -195,6 +212,25 @@ export async function updateCommitmentStatus(id: string, status: CommitmentStatu
   const { data, error } = await supabase.from("commitments").update(patch).eq("id", id).select("*").single<Commitment>();
   if (error) throw error;
   return data;
+}
+
+export async function updateCommitmentFolder(id: string, folder: string) {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase
+    .from("commitments")
+    .update({ folder })
+    .eq("id", id)
+    .select("*")
+    .single<Commitment>();
+  if (error) throw error;
+  return data;
+}
+
+export async function listFoldersForUser(userId: string) {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.from("commitments").select("folder").eq("user_id", userId);
+  if (error) throw error;
+  return Array.from(new Set((data ?? []).map((item) => item.folder).filter(Boolean))).sort();
 }
 
 export async function updateReminderResponse(commitmentId: string, response: "done" | "snooze" | "skip") {
