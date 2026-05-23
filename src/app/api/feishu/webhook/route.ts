@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { extractFeishuText, verifyFeishuToken } from "@/lib/feishu";
-import { handleIncomingFeishuMessage } from "@/lib/workflow";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +32,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "missing open_id" }, { status: 400 });
   }
 
+  const { handleIncomingFeishuMessage } = await import("@/lib/workflow");
   handleIncomingFeishuMessage({ openId, userId, messageId, text }).catch((error) => {
     console.error("Feishu message handling failed", error);
   });

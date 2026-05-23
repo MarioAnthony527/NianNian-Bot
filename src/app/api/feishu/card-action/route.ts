@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { verifyFeishuToken } from "@/lib/feishu";
-import { handleCardAction } from "@/lib/workflow";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +23,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "missing action or commitmentId" }, { status: 400 });
   }
 
+  const { handleCardAction } = await import("@/lib/workflow");
   const message = await handleCardAction(action, commitmentId);
 
   return Response.json({
