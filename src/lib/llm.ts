@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { DEFAULT_FOLDER } from "@/lib/constants";
 import { config } from "@/lib/config";
-import type { AnalyzeResult, ParsedDouyin, ReminderCopy, CommitmentWithVideo } from "@/lib/types";
+import type { AnalyzeResult, CommitmentWithVideo, ParsedDouyin, ReminderCopy } from "@/lib/types";
 import { weekdayName } from "@/lib/time";
 
 const rawAnalyzeSchema = z.object({
-  is_real_commitment: z.boolean(),
+  is_real_commitment: z.boolean().default(true),
   noise_reason: z.string().default(""),
   folder: z.enum(["美食", "身体", "工作", "知识", "关系", "杂物"]).default(DEFAULT_FOLDER),
   commitment_summary: z.string().default(""),
@@ -21,6 +21,29 @@ const copySchema = z.object({
   body_steps_intro: z.string().min(1).max(20),
   body_steps: z.array(z.string()).min(1).max(5),
 });
+
+function compactText(text: string, fallback: string) {
+  const cleaned = text
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/复制打开抖音|看看|的作品|aan:|jpq:|[A-Za-z]@[A-Za-z]\.[A-Za-z]+|\d{2}\/\d{2}|:\d+[ap]m/gi, "")
+    .replace(/[【】#：:，,。.\s]+/g, " ")
+    .trim();
+  return (cleaned || fallback).slice(0, 28);
+}
+
+function fallbackAnalysis(parsed: ParsedDouyin, reason = ""): AnalyzeResult {
+  const subject = compactText(parsed.description || parsed.title || parsed.asrText, "回看这条内容");
+  return {
+    is_real_commitment: true,
+    noise_reason: reason,
+    folder: "杂物",
+    commitment_summary: `${subject}，判断是否要做`,
+    executable_steps: ["打开原视频回看", "记下一个可做点", "不需要就放下"],
+    estimated_cost: "5分钟",
+    best_push_window: "随时",
+    tone_hint: "兴趣型",
+  };
+}
 
 async function chatJson<T>(input: {
   model: string;
@@ -66,13 +89,14 @@ async function chatJson<T>(input: {
 }
 
 export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult> {
-  const raw = await chatJson({
-    model: config.llmModelAnalyze,
-    schema: rawAnalyzeSchema,
-    temperature: 0.2,
-    system:
-      "你是一个理解抖音视频背后用户意图的 AI 分析师。只输出严格 JSON，不要 Markdown。无法判断时倾向娱乐，避免打扰用户。",
-    user: `判断这条视频是未来想兑现的承诺，还是刷过就忘的娱乐。
+  try {
+    const raw = await chatJson({
+      model: config.llmModelAnalyze,
+      schema: rawAnalyzeSchema,
+      temperature: 0.25,
+      system:
+        "你是一个把抖音分享内容转成轻量提醒的 AI 分析师。只输出严格 JSON。黑客松 MVP 策略：除非链接完全不可读，否则都要给用户一个低压力、可放下的提醒。",
+      user: `把这条抖音分享转成一个可提醒的承诺。如果它是教程/知识/方法，就提炼真实行动；如果它偏娱乐/审美/图文，就转成“回看这条灵感并决定是否要做”的轻量提醒，不要直接丢弃。
 
 【视频信息】
 - 标题: ${parsed.title}
@@ -86,31 +110,32 @@ export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult>
   "is_real_commitment": true,
   "noise_reason": "",
   "folder": "美食|身体|工作|知识|关系|杂物",
-  "commitment_summary": "≤25字",
-  "executable_steps": ["≤15字", "≤15字", "≤15字"],
+  "commitment_summary": "≤25字，必须非空",
+  "executable_steps": ["≤15字，必须具体", "≤15字", "≤15字"],
   "estimated_cost": "5分钟|15分钟|半小时|半天|更长",
   "best_push_window": "饭点前|周末早上|工作日晚上|睡前|通勤时段|随时",
   "tone_hint": "焦虑型|向往型|兴趣型|实用型"
 }
 
-承诺标准：包含教程、方法、清单、行动指令、可重复练习。纯搞笑、八卦、审美、明星动态是娱乐。
-禁止编造视频中没有的信息。步骤必须具体。`,
-  });
+要求：
+- 任何可读分享都尽量进入提醒队列。
+- 纯娱乐也可以变成“5分钟回看并决定是否放下”。
+- 不要编造视频里没有的专业步骤。`,
+    });
 
-  if (!raw.is_real_commitment) {
+    if (!raw.is_real_commitment) {
+      return fallbackAnalysis(parsed, raw.noise_reason || "内容偏娱乐，转为轻量回看提醒");
+    }
+
     return {
       ...raw,
-      noise_reason: raw.noise_reason || "更像刷过就好的内容",
-      commitment_summary: raw.commitment_summary || "非承诺内容",
-      executable_steps: raw.executable_steps.length ? raw.executable_steps : ["无需提醒"],
+      is_real_commitment: true,
+      commitment_summary: raw.commitment_summary || fallbackAnalysis(parsed).commitment_summary,
+      executable_steps: raw.executable_steps.length ? raw.executable_steps : fallbackAnalysis(parsed).executable_steps,
     };
+  } catch (error) {
+    return fallbackAnalysis(parsed, error instanceof Error ? error.message : "LLM 分析失败，使用兜底提醒");
   }
-
-  return {
-    ...raw,
-    commitment_summary: raw.commitment_summary || parsed.title || "待整理的承诺",
-    executable_steps: raw.executable_steps.length ? raw.executable_steps : ["先看一遍内容", "选一个最小动作", "今天完成一次"],
-  };
 }
 
 export async function generateReminderCopy(commitment: CommitmentWithVideo): Promise<ReminderCopy> {
@@ -122,12 +147,13 @@ export async function generateReminderCopy(commitment: CommitmentWithVideo): Pro
     .filter(Boolean)
     .join(", ");
 
-  return chatJson({
-    model: config.llmModelCopy,
-    schema: copySchema,
-    temperature: 0.45,
-    system: "你是用户的 AI 收藏夹守门人「念念」。只输出严格 JSON，不要 Markdown。文案克制、具体、不鸡汤。",
-    user: `今天要为这条承诺推送一条温柔提醒。
+  try {
+    return await chatJson({
+      model: config.llmModelCopy,
+      schema: copySchema,
+      temperature: 0.45,
+      system: "你是用户的 AI 收藏夹守门人「念念」。只输出严格 JSON。文案克制、具体、不鸡汤。",
+      user: `今天要为这条承诺推送一条温柔提醒。
 
 【承诺信息】
 - 用户想做: ${commitment.commitment_summary}
@@ -153,5 +179,13 @@ export async function generateReminderCopy(commitment: CommitmentWithVideo): Pro
 }
 
 禁用："加油"、"你可以的"、"相信自己"、"亲"、"宝"、"小可爱"、"哦~"、"呢~"、"啦~"。emoji 不超过 2 个。`,
-  });
+    });
+  } catch {
+    return {
+      title: "今天看一眼",
+      body_main: `这条「${commitment.commitment_summary}」不用一次做完，先花 ${commitment.estimated_cost} 处理一个最小动作。`,
+      body_steps_intro: "3步",
+      body_steps: commitment.executable_steps.slice(0, 3),
+    };
+  }
 }

@@ -84,7 +84,7 @@ export async function createCommitment(userId: string, videoId: string, analysis
   if (existingError) throw existingError;
   if (existing) return existing;
 
-  const status = analysis.is_real_commitment ? "pending" : "archived";
+  const status = "pending";
   const { data, error } = await supabase
     .from("commitments")
     .insert({

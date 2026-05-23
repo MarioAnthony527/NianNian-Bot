@@ -11,15 +11,7 @@ import {
   upsertVideo,
 } from "@/lib/db";
 import { extractUrls, parseDouyinUrl } from "@/lib/douyin";
-import {
-  analysisCard,
-  noiseCard,
-  processingCard,
-  reminderCard,
-  replyFeishuCard,
-  sendFeishuCard,
-  sendFeishuText,
-} from "@/lib/feishu";
+import { analysisCard, processingCard, reminderCard, replyFeishuCard, sendFeishuCard, sendFeishuText } from "@/lib/feishu";
 import { analyzeVideo, generateReminderCopy } from "@/lib/llm";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { CommitmentWithVideo, User } from "@/lib/types";
@@ -59,11 +51,6 @@ export async function handleIncomingFeishuMessage(input: {
     const full = (await getCommitment(commitment.id)) as CommitmentWithVideo;
 
     await logEvent(user.id, "video_processed", { video_id: video.id, commitment_id: commitment.id, analysis });
-
-    if (!analysis.is_real_commitment) {
-      await sendFeishuCard(input.openId, noiseCard(analysis.noise_reason));
-      return;
-    }
 
     await createDefaultReminder(user.id, commitment.id);
     const withReminder = (await getCommitment(commitment.id)) as CommitmentWithVideo;
