@@ -85,7 +85,7 @@ export default async function CommitmentDetailPage({ params, searchParams }: Pag
           <section className="border-y border-zinc-100 py-4">
             <FolderEditor commitmentId={commitment.id} currentFolder={commitment.folder} folders={folders} />
             <p className="mt-2 text-xs leading-5 text-zinc-500">
-              也可以在飞书里把链接发成“#旅行 https://...”“#旅行https://...”或“文件夹:旅行 https://...”，念念会直接放进对应收藏夹。
+              也可以在飞书里把链接发成“#旅行 https://...”“#旅行https://...”或“文件夹:旅行 https://...”。只有消息开头的 # 会被当作收藏夹，抖音自带话题会被忽略。
             </p>
           </section>
 

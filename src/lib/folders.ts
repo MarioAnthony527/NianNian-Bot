@@ -15,7 +15,7 @@ export function extractFolderDirective(text: string) {
     return normalizeFolderName(explicit[1]);
   }
 
-  const hashTag = text.match(/(?:^|\s)#([\p{L}\p{N}_\-\u4e00-\u9fff]{1,12}?)(?=\s|$|[，,。；;：:]|https?:\/\/)/u);
+  const hashTag = text.match(/^\s*#([\p{L}\p{N}_\-\u4e00-\u9fff]{1,12}?)(?=\s|$|[，,。；;：:]|https?:\/\/)/u);
   if (hashTag?.[1]) {
     return normalizeFolderName(hashTag[1]);
   }
