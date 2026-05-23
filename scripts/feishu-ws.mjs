@@ -81,10 +81,9 @@ const eventDispatcher = new lark.EventDispatcher({}).register({
 const client = new lark.WSClient({
   appId,
   appSecret,
-  eventDispatcher,
   loggerLevel: lark.LoggerLevel.info,
 });
 
 console.log(`[feishu-ws] connecting with app ${appId}`);
 console.log(`[feishu-ws] forwarding events to ${appUrl}`);
-client.start();
+client.start({ eventDispatcher });
