@@ -1,65 +1,150 @@
-import Image from "next/image";
+import Link from "next/link";
+import { BarChart3, ExternalLink, Settings } from "lucide-react";
+import { FOLDERS, STATUS_META } from "@/lib/constants";
+import { listCommitments } from "@/lib/db";
+import { relativeTime } from "@/lib/time";
+import type { CommitmentWithVideo } from "@/lib/types";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+type PageProps = {
+  searchParams: Promise<{ token?: string; folder?: string; status?: string }>;
+};
+
+function stepText(commitment: CommitmentWithVideo) {
+  const steps = Array.isArray(commitment.executable_steps) ? commitment.executable_steps : [];
+  return steps.slice(0, 2).join(" / ") || "等待 AI 整理步骤";
+}
+
+function CommitmentRow({ item, token }: { item: CommitmentWithVideo; token?: string }) {
+  const params = token ? `?token=${token}` : "";
+  const status = STATUS_META[item.status] ?? STATUS_META.pending;
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <Link
+      href={`/commitment/${item.id}${params}`}
+      className="block rounded-lg border border-zinc-200 bg-white px-4 py-3 hover:border-zinc-300 hover:bg-zinc-50"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-semibold text-zinc-950">{item.commitment_summary}</span>
+            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${status.color}`}>{status.label}</span>
+          </div>
+          <p className="mt-1 line-clamp-1 text-sm text-zinc-600">{stepText(item)}</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <span className="shrink-0 text-xs text-zinc-500">{relativeTime(item.created_at)}</span>
+      </div>
+      <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
+        <span>{item.folder} · {item.estimated_cost} · {item.best_push_window}</span>
+        <ExternalLink className="h-3.5 w-3.5" />
+      </div>
+    </Link>
+  );
+}
+
+function Section({
+  title,
+  items,
+  token,
+}: {
+  title: string;
+  items: CommitmentWithVideo[];
+  token?: string;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-zinc-800">{title}</h2>
+        <span className="text-xs text-zinc-500">{items.length}</span>
+      </div>
+      {items.length ? (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <CommitmentRow key={item.id} item={item} token={token} />
+          ))}
         </div>
-      </main>
-    </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-zinc-200 bg-white/70 px-4 py-6 text-sm text-zinc-500">
+          暂时没有内容。
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default async function Home({ searchParams }: PageProps) {
+  const params = await searchParams;
+  let commitments: CommitmentWithVideo[] = [];
+  let error = "";
+
+  try {
+    commitments = await listCommitments({
+      token: params.token,
+      folder: params.folder,
+      status: params.status,
+    });
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+  }
+
+  const pending = commitments.filter((item) => item.status === "pending");
+  const fulfilled = commitments.filter((item) => item.status === "fulfilled");
+  const abandoned = commitments.filter((item) => item.status === "abandoned");
+  const tokenQuery = params.token ? `?token=${params.token}` : "";
+
+  return (
+    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-5 sm:px-6 lg:px-8">
+      <header className="flex items-start justify-between gap-4 py-5">
+        <div>
+          <p className="text-sm text-zinc-500">你的 AI 承诺管家</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-normal text-zinc-950">你的承诺台</h1>
+        </div>
+        <div className="flex gap-2">
+          <Link href={`/insights${tokenQuery}`} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50" title="承诺地图">
+            <BarChart3 className="h-4 w-4" />
+          </Link>
+          <Link href={`/demo${tokenQuery}`} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50" title="演示控制">
+            <Settings className="h-4 w-4" />
+          </Link>
+        </div>
+      </header>
+
+      <nav className="mb-5 flex gap-2 overflow-x-auto pb-1">
+        <Link href={`/${tokenQuery}`} className="shrink-0 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700">
+          全部 {commitments.length}
+        </Link>
+        {FOLDERS.map((folder) => (
+          <Link
+            key={folder.key}
+            href={`/?${new URLSearchParams({ ...(params.token ? { token: params.token } : {}), folder: folder.key }).toString()}`}
+            className={`shrink-0 rounded-full border px-3 py-1.5 text-sm ${folder.color}`}
+          >
+            {folder.emoji} {folder.key} {commitments.filter((item) => item.folder === folder.key).length}
+          </Link>
+        ))}
+      </nav>
+
+      {error ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          当前还没连上 Supabase：{error}
+        </div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-6">
+            <Section title="等待兑现" items={pending} token={params.token} />
+            <Section title="本周已兑现" items={fulfilled} token={params.token} />
+          </div>
+          <div className="space-y-6">
+            <Section title="放下的承诺" items={abandoned} token={params.token} />
+            <section className="rounded-lg border border-zinc-200 bg-white p-4">
+              <h2 className="text-sm font-semibold text-zinc-900">现场入口</h2>
+              <p className="mt-2 text-sm leading-6 text-zinc-600">
+                飞书卡片里的“打开控制台”会自动带上你的 token。没有 token 时这里显示全部数据，适合团队演示大屏。
+              </p>
+            </section>
+          </div>
+        </div>
+      )}
+    </main>
   );
 }
