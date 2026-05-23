@@ -1,5 +1,5 @@
 import { config } from "@/lib/config";
-import type { CommitmentWithVideo, ReminderCopy, User } from "@/lib/types";
+import type { ReminderCopy, SummaryResult } from "@/lib/types";
 
 type FeishuTokenCache = {
   token: string;
@@ -96,75 +96,36 @@ function markdown(text: string) {
   return { tag: "markdown", content: text };
 }
 
-function button(text: string, value: Record<string, string>, type: "default" | "primary" | "danger" = "default") {
-  return {
-    tag: "button",
-    text: { tag: "plain_text", content: text },
-    type,
-    value,
-  };
-}
+export function summaryPushCard(result: SummaryResult, itemCount: number) {
+  const suggestionText = result.suggestions
+    .map((suggestion, index) => {
+      const steps = suggestion.steps.map((step, stepIndex) => `${stepIndex + 1}. ${step}`).join("\n");
+      return (
+        `**提醒 ${index + 1} / ${result.suggestions.length}：${suggestion.title}**\n` +
+        `${suggestion.body}\n\n` +
+        `步骤：\n${steps}\n\n` +
+        `预计：${suggestion.estimated_cost} · 适合：${suggestion.best_push_window}`
+      );
+    })
+    .join("\n\n---\n\n");
 
-export function processingCard() {
   return {
     config: { wide_screen_mode: true },
     header: {
-      template: "blue",
-      title: { tag: "plain_text", content: "念念正在看这条视频" },
-    },
-    elements: [
-      markdown("已收到链接。\n\n正在识别视频、理解内容，并判断它是不是一个值得提醒的承诺。"),
-    ],
-  };
-}
-
-export function analysisCard(commitment: CommitmentWithVideo, user: User) {
-  const dashboardUrl = `${config.appUrl}/?token=${user.dashboard_token}`;
-  return {
-    config: { wide_screen_mode: true },
-    header: {
-      template: "green",
-      title: { tag: "plain_text", content: "我看完这条了" },
+      template: "turquoise",
+      title: { tag: "plain_text", content: "已生成本批提醒" },
     },
     elements: [
       markdown(
-        `这是关于「${commitment.commitment_summary}」的承诺\n\n` +
-          `类型：${commitment.folder} · 估时：${commitment.estimated_cost}\n\n` +
-          `我把它放进了「${commitment.folder}」，明早 9 点提醒你。\n\n` +
-          `不写收藏夹时默认进「全部」。下次可以把 #旅行 放在整条消息开头，或写 文件夹:旅行，直接放进你自己的收藏夹。`,
+        `我整理了当前 ${itemCount} 条收藏，并清空数据列表。\n\n` +
+          `${result.summary}\n\n` +
+          `${suggestionText}`,
       ),
-      {
-        tag: "action",
-        actions: [
-          button("不放了", { action: "delete", commitmentId: commitment.id }, "danger"),
-          button("立刻推送", { action: "push_now", commitmentId: commitment.id }, "primary"),
-          {
-            tag: "button",
-            text: { tag: "plain_text", content: "打开控制台" },
-            type: "default",
-            url: dashboardUrl,
-          },
-        ],
-      },
     ],
   };
 }
 
-export function noiseCard(reason: string) {
-  return {
-    config: { wide_screen_mode: true },
-    header: {
-      template: "grey",
-      title: { tag: "plain_text", content: "这条我先不放进提醒" },
-    },
-    elements: [
-      markdown(`${reason || "它更像刷过就好的内容。"}\n\n念念只提醒真正能执行的承诺，避免打扰你。`),
-    ],
-  };
-}
-
-export function reminderCard(commitment: CommitmentWithVideo, copy: ReminderCopy, user: User) {
-  const dashboardUrl = `${config.appUrl}/commitment/${commitment.id}?token=${user.dashboard_token}`;
+export function reminderCard(copy: ReminderCopy) {
   return {
     config: { wide_screen_mode: true },
     header: {
@@ -173,20 +134,6 @@ export function reminderCard(commitment: CommitmentWithVideo, copy: ReminderCopy
     },
     elements: [
       markdown(`${copy.body_main}\n\n${copy.body_steps_intro}：\n${copy.body_steps.map((step, idx) => `${idx + 1}. ${step}`).join("\n")}`),
-      {
-        tag: "action",
-        actions: [
-          button("做了", { action: "done", commitmentId: commitment.id }, "primary"),
-          button("晚点", { action: "snooze", commitmentId: commitment.id }),
-          button("算了", { action: "skip", commitmentId: commitment.id }, "danger"),
-          {
-            tag: "button",
-            text: { tag: "plain_text", content: "详情" },
-            type: "default",
-            url: dashboardUrl,
-          },
-        ],
-      },
     ],
   };
 }

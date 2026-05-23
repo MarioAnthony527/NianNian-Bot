@@ -1,13 +1,20 @@
 import { z } from "zod";
 import { DEFAULT_FOLDER } from "@/lib/constants";
 import { config } from "@/lib/config";
-import type { AnalyzeResult, CommitmentWithVideo, ParsedDouyin, ReminderCopy } from "@/lib/types";
+import type {
+  AnalyzeResult,
+  CommitmentWithVideo,
+  ParsedDouyin,
+  ReminderCopy,
+  SavedItem,
+  SummaryResult,
+} from "@/lib/types";
 import { weekdayName } from "@/lib/time";
 
 const rawAnalyzeSchema = z.object({
   is_real_commitment: z.boolean().default(true),
   noise_reason: z.string().default(""),
-  folder: z.enum(["全部", "美食", "身体", "工作", "知识", "关系", "杂物"]).default(DEFAULT_FOLDER),
+  folder: z.enum(["默认", "美食", "身体", "工作", "知识", "关系", "杂物"]).default(DEFAULT_FOLDER),
   commitment_summary: z.string().default(""),
   executable_steps: z.array(z.string()).default([]),
   estimated_cost: z.string().default("15分钟"),
@@ -20,6 +27,20 @@ const copySchema = z.object({
   body_main: z.string().min(1).max(120),
   body_steps_intro: z.string().min(1).max(20),
   body_steps: z.array(z.string()).min(1).max(5),
+});
+
+const summarySchema = z.object({
+  summary: z.string().min(1).max(160),
+  suggestions: z.array(
+    z.object({
+      title: z.string().min(1).max(30),
+      body: z.string().min(1).max(160),
+      steps: z.array(z.string().min(1).max(24)).min(1).max(3),
+      estimated_cost: z.string().min(1).max(20),
+      best_push_window: z.string().min(1).max(20),
+      tone_hint: z.string().min(1).max(20),
+    }),
+  ).min(1).max(2),
 });
 
 function compactText(text: string, fallback: string) {
@@ -42,6 +63,22 @@ function fallbackAnalysis(parsed: ParsedDouyin, reason = ""): AnalyzeResult {
     estimated_cost: "5分钟",
     best_push_window: "随时",
     tone_hint: "兴趣型",
+  };
+}
+
+function fallbackSummary(items: SavedItem[], reason = ""): SummaryResult {
+  return {
+    summary: reason || `本批共 ${items.length} 条收藏，适合先压缩成一个低压力回看动作。`,
+    suggestions: [
+      {
+        title: "回看本批收藏",
+        body: "花 5 分钟从这些收藏里选一个最想继续的方向，不需要一次做完。",
+        steps: ["打开一条最想看的", "记下一个可做点", "决定是否继续"],
+        estimated_cost: "5分钟",
+        best_push_window: "随时",
+        tone_hint: "兴趣型",
+      },
+    ],
   };
 }
 
@@ -109,7 +146,7 @@ export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult>
 {
   "is_real_commitment": true,
   "noise_reason": "",
-  "folder": "全部|美食|身体|工作|知识|关系|杂物",
+  "folder": "默认|美食|身体|工作|知识|关系|杂物",
   "commitment_summary": "≤25字，必须非空",
   "executable_steps": ["≤15字，必须具体", "≤15字", "≤15字"],
   "estimated_cost": "5分钟|15分钟|半小时|半天|更长",
@@ -138,6 +175,57 @@ export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult>
   }
 }
 
+export async function summarizeSavedItems(items: SavedItem[]): Promise<SummaryResult> {
+  if (!items.length) return fallbackSummary(items, "当前没有待总结的数据。");
+
+  const compactItems = items.slice(0, 20).map((item, index) => ({
+    index: index + 1,
+    title: item.title || "抖音分享",
+    description: item.description || "",
+    author: item.author || "",
+    tags: item.tags ?? [],
+    share_text: item.raw_share_text || "",
+  }));
+
+  try {
+    return await chatJson({
+      model: config.llmModelAnalyze,
+      schema: summarySchema,
+      temperature: 0.35,
+      system:
+        "你是「念念」的批量整理引擎。用户把一批抖音收藏丢给你，你要把它们压缩成 1-2 条低压力、可执行的提醒内容。只输出严格 JSON。",
+      user: `请总结当前这批收藏，生成 1-2 条适合直接推送给用户的提醒内容。
+
+【重要原则】
+- 不过滤、不丢弃用户收藏。
+- 不要逐条生成提醒，要把整批收藏压缩成 1-2 个方向。
+- 内容很杂时，生成“回看本批收藏，挑一个行动点”的低压力提醒。
+- 不要编造视频里没有的具体事实；只能基于标题、描述、分享文案做保守归纳。
+- 标题要短，正文要像提醒，不要像报告。
+
+【当前收藏，共 ${items.length} 条】
+${JSON.stringify(compactItems, null, 2)}
+
+【输出 JSON】
+{
+  "summary": "≤80字，概括这批收藏",
+  "suggestions": [
+    {
+      "title": "≤18字提醒标题",
+      "body": "≤80字推送正文",
+      "steps": ["≤18字", "≤18字", "≤18字"],
+      "estimated_cost": "5分钟|15分钟|半小时|半天|更长",
+      "best_push_window": "饭点前|周末早上|工作日晚上|睡前|通勤时段|随时",
+      "tone_hint": "兴趣型|实用型|向往型|焦虑型"
+    }
+  ]
+}`,
+    });
+  } catch (error) {
+    return fallbackSummary(items, error instanceof Error ? error.message : "批量总结失败，使用兜底提醒。");
+  }
+}
+
 export async function generateReminderCopy(commitment: CommitmentWithVideo): Promise<ReminderCopy> {
   const now = new Date();
   const reminders = commitment.reminders ?? [];
@@ -152,12 +240,11 @@ export async function generateReminderCopy(commitment: CommitmentWithVideo): Pro
       model: config.llmModelCopy,
       schema: copySchema,
       temperature: 0.45,
-      system: "你是用户的 AI 收藏夹守门人「念念」。只输出严格 JSON。文案克制、具体、不鸡汤。",
+      system: "你是用户的 AI 提醒管家「念念」。只输出严格 JSON。文案克制、具体、不鸡汤。",
       user: `今天要为这条承诺推送一条温柔提醒。
 
 【承诺信息】
 - 用户想做: ${commitment.commitment_summary}
-- 文件夹: ${commitment.folder}
 - 情绪基调: ${commitment.tone_hint}
 - 可执行步骤: ${commitment.executable_steps.join(" / ")}
 - 预计花费: ${commitment.estimated_cost}

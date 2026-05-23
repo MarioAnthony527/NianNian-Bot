@@ -1,6 +1,5 @@
 export type CommitmentStatus = "pending" | "fulfilled" | "abandoned" | "archived" | "failed";
 export type ReminderStatus = "pending" | "sent" | "done" | "snoozed" | "skipped" | "failed";
-export type FolderName = string;
 
 export type User = {
   id: string;
@@ -34,7 +33,7 @@ export type Commitment = {
   video_id: string;
   user_id: string;
   is_real_commitment: boolean;
-  folder: FolderName;
+  folder: string;
   commitment_summary: string;
   executable_steps: string[];
   estimated_cost: string;
@@ -66,10 +65,26 @@ export type CommitmentWithVideo = Commitment & {
   reminders?: Reminder[];
 };
 
+export type SavedItem = {
+  id: string;
+  user_id: string;
+  original_url: string;
+  normalized_url: string;
+  video_id: string | null;
+  title: string | null;
+  description: string | null;
+  author: string | null;
+  cover_url: string | null;
+  tags: string[] | null;
+  raw_share_text: string | null;
+  raw_metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
 export type AnalyzeResult = {
   is_real_commitment: boolean;
   noise_reason: string;
-  folder: FolderName;
+  folder: string;
   commitment_summary: string;
   executable_steps: string[];
   estimated_cost: "5分钟" | "15分钟" | "半小时" | "半天" | "更长" | string;
@@ -82,6 +97,20 @@ export type ReminderCopy = {
   body_main: string;
   body_steps_intro: string;
   body_steps: string[];
+};
+
+export type SummarySuggestion = {
+  title: string;
+  body: string;
+  steps: string[];
+  estimated_cost: string;
+  best_push_window: string;
+  tone_hint: string;
+};
+
+export type SummaryResult = {
+  summary: string;
+  suggestions: SummarySuggestion[];
 };
 
 export type ParsedDouyin = {

@@ -1,23 +1,48 @@
 import {
   createCommitment,
-  createDefaultReminder,
+  createSentReminder,
+  countSavedItemsForUser,
   deleteCommitment,
+  deleteSavedItemsForUser,
   getCommitment,
   getOrCreateUser,
   hasProcessedFeishuMessage,
+  listSavedItemsForUser,
   logEvent,
   snoozeCommitment,
   updateCommitmentStatus,
   updateReminderResponse,
+  upsertSavedItem,
   upsertVideo,
 } from "@/lib/db";
 import { DEFAULT_FOLDER } from "@/lib/constants";
 import { extractUrls, parseDouyinUrl } from "@/lib/douyin";
-import { extractFolderDirective } from "@/lib/folders";
-import { analysisCard, processingCard, reminderCard, replyFeishuCard, sendFeishuCard, sendFeishuText } from "@/lib/feishu";
-import { analyzeVideo, generateReminderCopy } from "@/lib/llm";
+import { reminderCard, sendFeishuCard, sendFeishuText, summaryPushCard } from "@/lib/feishu";
+import { generateReminderCopy, summarizeSavedItems } from "@/lib/llm";
 import { supabaseAdmin } from "@/lib/supabase";
-import type { CommitmentWithVideo, User } from "@/lib/types";
+import type { AnalyzeResult, ParsedDouyin, SavedItem, User } from "@/lib/types";
+
+const SUMMARY_COMMANDS = new Set(["总结", "总结一下", "整理", "整理一下", "生成提醒", "生成推送"]);
+
+function isSummaryCommand(text: string) {
+  const normalized = text.replace(/[\s。.!！]/g, "");
+  return SUMMARY_COMMANDS.has(normalized);
+}
+
+function savedItemToParsed(item: SavedItem): ParsedDouyin {
+  return {
+    originalUrl: item.original_url,
+    normalizedUrl: item.normalized_url,
+    videoId: item.video_id,
+    title: item.title || "本批收藏汇总",
+    description: item.description || item.raw_share_text || item.title || "用户收藏的视频内容",
+    author: item.author || "",
+    coverUrl: item.cover_url,
+    tags: item.tags ?? [],
+    asrText: item.raw_share_text || item.description || "",
+    rawMetadata: item.raw_metadata ?? {},
+  };
+}
 
 export async function handleIncomingFeishuMessage(input: {
   openId: string;
@@ -38,36 +63,37 @@ export async function handleIncomingFeishuMessage(input: {
     await logEvent(user.id, "feishu_message_received", { message_id: input.messageId, text: input.text });
   }
 
-  const urls = extractUrls(input.text);
-  const requestedFolder = extractFolderDirective(input.text);
-  if (!urls.length) {
-    await sendFeishuText(input.openId, "发一条抖音分享链接给我，我会判断它是不是一个值得提醒的承诺。");
+  if (isSummaryCommand(input.text)) {
+    await summarizeCurrentSavedItems(user, input.openId);
     return;
   }
 
-  if (input.messageId) {
-    await replyFeishuCard(input.messageId, processingCard()).catch(() => sendFeishuCard(input.openId, processingCard()));
-  } else {
-    await sendFeishuCard(input.openId, processingCard());
+  const urls = extractUrls(input.text);
+  if (!urls.length) {
+    await sendFeishuText(input.openId, "发抖音分享链接给我，我会先加入数据列表。发送“总结”即可生成推送内容。");
+    return;
   }
 
   await logEvent(user.id, "video_received", { text: input.text, url: urls[0] });
 
   try {
     const parsed = await parseDouyinUrl(urls[0], input.text);
-    const video = await upsertVideo(user.id, parsed);
-    const analysis = await analyzeVideo(parsed);
-    analysis.folder = requestedFolder ?? DEFAULT_FOLDER;
-    const commitment = await createCommitment(user.id, video.id, analysis, { forceFolder: Boolean(requestedFolder) });
-    const full = (await getCommitment(commitment.id)) as CommitmentWithVideo;
+    const { item, created } = await upsertSavedItem(user.id, parsed, input.text);
+    const count = await countSavedItemsForUser(user.id);
 
-    await logEvent(user.id, "video_processed", { video_id: video.id, commitment_id: commitment.id, analysis });
+    await logEvent(user.id, created ? "saved_item_created" : "saved_item_duplicate", {
+      saved_item_id: item.id,
+      url: urls[0],
+    });
 
-    await createDefaultReminder(user.id, commitment.id);
-    const withReminder = (await getCommitment(commitment.id)) as CommitmentWithVideo;
-    await sendFeishuCard(input.openId, analysisCard(withReminder ?? full, user));
+    await sendFeishuText(
+      input.openId,
+      created
+        ? `已添加到数据列表。当前 ${count} 条。发送“总结”即可生成推送内容。`
+        : `这条已经在数据列表里。当前 ${count} 条。发送“总结”即可生成推送内容。`,
+    );
   } catch (error) {
-    await logEvent(user.id, "video_processing_failed", {
+    await logEvent(user.id, "saved_item_failed", {
       message: error instanceof Error ? error.message : String(error),
       url: urls[0],
     });
@@ -80,6 +106,49 @@ export async function handleIncomingFeishuMessage(input: {
   }
 }
 
+async function summarizeCurrentSavedItems(user: User, openId: string) {
+  const items = await listSavedItemsForUser(user.id);
+  if (!items.length) {
+    await sendFeishuText(openId, "当前数据列表为空，先发几条抖音链接给我。");
+    return;
+  }
+
+  try {
+    const result = await summarizeSavedItems(items);
+    const suggestions = result.suggestions.slice(0, 2);
+    const firstVideo = await upsertVideo(user.id, savedItemToParsed(items[0]));
+
+    for (const suggestion of suggestions) {
+      const analysis: AnalyzeResult = {
+        is_real_commitment: true,
+        noise_reason: "",
+        folder: DEFAULT_FOLDER,
+        commitment_summary: suggestion.title,
+        executable_steps: suggestion.steps,
+        estimated_cost: suggestion.estimated_cost,
+        best_push_window: suggestion.best_push_window,
+        tone_hint: suggestion.tone_hint,
+      };
+      const commitment = await createCommitment(user.id, firstVideo.id, analysis, { skipDedupe: true });
+      await createSentReminder(user.id, commitment.id, suggestion);
+    }
+
+    await sendFeishuCard(openId, summaryPushCard({ ...result, suggestions }, items.length));
+    await deleteSavedItemsForUser(user.id);
+    await logEvent(user.id, "saved_items_summarized", {
+      item_count: items.length,
+      suggestion_count: suggestions.length,
+      summary: result.summary,
+    });
+  } catch (error) {
+    await logEvent(user.id, "saved_items_summary_failed", {
+      item_count: items.length,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    await sendFeishuText(openId, "这批数据暂时总结失败。数据列表还在，你可以稍后再发送“总结”。");
+  }
+}
+
 export async function pushReminderNow(commitmentId: string) {
   const commitment = await getCommitment(commitmentId);
   if (!commitment) throw new Error("Commitment not found");
@@ -89,7 +158,7 @@ export async function pushReminderNow(commitmentId: string) {
   if (error) throw error;
 
   const copy = await generateReminderCopy(commitment);
-  await sendFeishuCard(user.feishu_open_id, reminderCard(commitment, copy, user));
+  await sendFeishuCard(user.feishu_open_id, reminderCard(copy));
 
   const { data: reminder } = await supabase
     .from("reminders")

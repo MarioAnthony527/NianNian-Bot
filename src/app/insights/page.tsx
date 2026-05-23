@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft, BarChart3 } from "lucide-react";
 import { listCommitments } from "@/lib/db";
-import { defaultFolderNames, folderMeta } from "@/lib/folders";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +16,6 @@ export default async function InsightsPage({ searchParams }: PageProps) {
   const actionable = commitments.filter((item) => item.status !== "archived" && item.status !== "failed").length;
   const rate = actionable ? Math.round((fulfilled / actionable) * 100) : 0;
   const tokenQuery = token ? `?token=${token}` : "";
-  const folderNames = Array.from(new Set([...defaultFolderNames(), ...commitments.map((item) => item.folder).filter(Boolean)]));
-  const topAbandoned = folderNames.map((folderName) => ({
-    ...folderMeta(folderName),
-    count: commitments.filter((item) => item.status === "abandoned" && item.folder === folderName).length,
-  })).sort((a, b) => b.count - a.count)[0];
 
   return (
     <main className="mx-auto min-h-screen max-w-4xl px-4 py-6 sm:px-6">
@@ -54,35 +48,13 @@ export default async function InsightsPage({ searchParams }: PageProps) {
       </div>
 
       <section className="mt-6 rounded-lg border border-zinc-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-zinc-900">类型分布</h2>
-        <div className="mt-4 space-y-3">
-          {folderNames.map((folderName) => {
-            const folder = folderMeta(folderName);
-            const count = commitments.filter((item) => item.folder === folder.key).length;
-            const percent = commitments.length ? Math.round((count / commitments.length) * 100) : 0;
-            return (
-              <div key={folder.key}>
-                <div className="mb-1 flex justify-between text-sm">
-                  <span>{folder.emoji} {folder.key}</span>
-                  <span className="text-zinc-500">{percent}%</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
-                  <div className="h-full rounded-full bg-zinc-800" style={{ width: `${percent}%` }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="mt-6 rounded-lg border border-zinc-200 bg-white p-5">
         <h2 className="text-sm font-semibold text-zinc-900">一句洞察</h2>
         <p className="mt-3 text-sm leading-6 text-zinc-700">
-          {topAbandoned?.count
-            ? `你放下的承诺里，「${topAbandoned.key}」最多。它可能不是不重要，只是现在成本偏高。`
-            : fulfilled
-              ? "本周已经有承诺被兑现。继续保留少量、真实、能执行的事情。"
-              : "承诺还在积累中。先让每条都足够小，提醒才不会变成负担。"}
+          {fulfilled
+            ? "已经有承诺被兑现。继续保留少量、真实、能执行的事情。"
+            : commitments.length
+              ? "提醒已经生成。先挑一条成本最低的开始，不需要一次完成。"
+              : "承诺还在积累中。先在飞书发送几条链接，再发送“总结”生成推送内容。"}
         </p>
       </section>
     </main>

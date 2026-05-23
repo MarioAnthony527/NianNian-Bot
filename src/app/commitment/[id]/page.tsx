@@ -1,11 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, Send } from "lucide-react";
-import { getCommitment, listFoldersForUser } from "@/lib/db";
-import { defaultFolderNames } from "@/lib/folders";
+import { ArrowLeft, ExternalLink } from "lucide-react";
+import { getCommitment } from "@/lib/db";
 import { relativeTime } from "@/lib/time";
-import { DemoPushButton } from "@/components/DemoPushButton";
-import { FolderEditor } from "@/components/FolderEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +31,6 @@ export default async function CommitmentDetailPage({ params, searchParams }: Pag
 
   const steps = Array.isArray(commitment.executable_steps) ? commitment.executable_steps : [];
   const video = commitment.videos;
-  const folders = Array.from(new Set([...defaultFolderNames(), ...(await listFoldersForUser(commitment.user_id))]));
 
   return (
     <main className="mx-auto min-h-screen max-w-3xl px-4 py-6 sm:px-6">
@@ -53,8 +49,6 @@ export default async function CommitmentDetailPage({ params, searchParams }: Pag
         <div className="space-y-6 p-5 sm:p-6">
           <header>
             <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-500">
-              <span>{commitment.folder}</span>
-              <span>·</span>
               <span>{commitment.estimated_cost}</span>
               <span>·</span>
               <span>{relativeTime(commitment.created_at)}</span>
@@ -82,13 +76,6 @@ export default async function CommitmentDetailPage({ params, searchParams }: Pag
             </dl>
           </section>
 
-          <section className="border-y border-zinc-100 py-4">
-            <FolderEditor commitmentId={commitment.id} currentFolder={commitment.folder} folders={folders} />
-            <p className="mt-2 text-xs leading-5 text-zinc-500">
-              不指定时默认进“全部”。也可以在飞书里发成“#旅行 https://...”“#旅行https://...”或“文件夹:旅行 https://...”。只有消息开头的 # 会被当作收藏夹。
-            </p>
-          </section>
-
           <section>
             <h2 className="text-sm font-semibold text-zinc-900">可执行步骤</h2>
             <ol className="mt-3 space-y-2">
@@ -101,13 +88,6 @@ export default async function CommitmentDetailPage({ params, searchParams }: Pag
             </ol>
           </section>
 
-          <section className="flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-5">
-            <DemoPushButton commitmentId={commitment.id} />
-            <button type="button" className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-zinc-200 px-3 text-sm text-zinc-700">
-              <Send className="h-4 w-4" />
-              网站动作请用飞书卡片完成
-            </button>
-          </section>
         </div>
       </article>
     </main>

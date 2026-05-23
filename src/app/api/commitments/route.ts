@@ -9,7 +9,6 @@ export async function GET(request: NextRequest) {
   const commitments = await listCommitments({
     token: search.get("token") ?? undefined,
     status: search.get("status") ?? undefined,
-    folder: search.get("folder") ?? undefined,
   });
   return Response.json({ commitments });
 }

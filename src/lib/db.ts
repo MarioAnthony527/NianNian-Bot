@@ -8,6 +8,8 @@ import type {
   CommitmentWithVideo,
   ParsedDouyin,
   Reminder,
+  SavedItem,
+  SummarySuggestion,
   User,
 } from "@/lib/types";
 
@@ -69,36 +71,112 @@ export async function upsertVideo(userId: string, parsed: ParsedDouyin) {
   return data;
 }
 
+export async function upsertSavedItem(userId: string, parsed: ParsedDouyin, rawShareText: string) {
+  const supabase = supabaseAdmin();
+  const { data: existing, error: existingError } = await supabase
+    .from("saved_items")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("normalized_url", parsed.normalizedUrl)
+    .maybeSingle<SavedItem>();
+
+  if (existingError) throw existingError;
+  if (existing) return { item: existing, created: false };
+
+  const { data, error } = await supabase
+    .from("saved_items")
+    .insert({
+      user_id: userId,
+      original_url: parsed.originalUrl,
+      normalized_url: parsed.normalizedUrl,
+      video_id: parsed.videoId,
+      title: parsed.title,
+      description: parsed.description,
+      author: parsed.author,
+      cover_url: parsed.coverUrl,
+      tags: parsed.tags,
+      raw_share_text: rawShareText,
+      raw_metadata: parsed.rawMetadata,
+    })
+    .select("*")
+    .single<SavedItem>();
+
+  if (error) throw error;
+  return { item: data, created: true };
+}
+
+export async function listSavedItemsForUser(userId: string) {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase
+    .from("saved_items")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true })
+    .returns<SavedItem[]>();
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function countSavedItemsForUser(userId: string) {
+  const supabase = supabaseAdmin();
+  const { count, error } = await supabase
+    .from("saved_items")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId);
+
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function countSavedItemsForToken(token?: string) {
+  const supabase = supabaseAdmin();
+  let userId: string | null = null;
+
+  if (token) {
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("id")
+      .eq("dashboard_token", token)
+      .maybeSingle<{ id: string }>();
+    if (error) throw error;
+    if (!user) return 0;
+    userId = user.id;
+  }
+
+  let query = supabase.from("saved_items").select("*", { count: "exact", head: true });
+  if (userId) query = query.eq("user_id", userId);
+  const { count, error } = await query;
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function deleteSavedItemsForUser(userId: string) {
+  const supabase = supabaseAdmin();
+  const { error } = await supabase.from("saved_items").delete().eq("user_id", userId);
+  if (error) throw error;
+}
+
 export async function createCommitment(
   userId: string,
   videoId: string,
   analysis: AnalyzeResult,
-  options?: { forceFolder?: boolean },
+  options?: { skipDedupe?: boolean },
 ) {
   const supabase = supabaseAdmin();
-  const { data: existing, error: existingError } = await supabase
-    .from("commitments")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("video_id", videoId)
-    .neq("status", "failed")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle<Commitment>();
+  if (!options?.skipDedupe) {
+    const { data: existing, error: existingError } = await supabase
+      .from("commitments")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("video_id", videoId)
+      .neq("status", "failed")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<Commitment>();
 
-  if (existingError) throw existingError;
-  if (existing) {
-    if (options?.forceFolder && existing.folder !== analysis.folder) {
-      const { data, error } = await supabase
-        .from("commitments")
-        .update({ folder: analysis.folder })
-        .eq("id", existing.id)
-        .select("*")
-        .single<Commitment>();
-      if (error) throw error;
-      return data;
-    }
-    return existing;
+    if (existingError) throw existingError;
+    if (existing) return existing;
   }
 
   const status = "pending";
@@ -153,10 +231,31 @@ export async function createDefaultReminder(userId: string, commitmentId: string
   return data;
 }
 
+export async function createSentReminder(userId: string, commitmentId: string, suggestion: SummarySuggestion) {
+  const supabase = supabaseAdmin();
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("reminders")
+    .insert({
+      user_id: userId,
+      commitment_id: commitmentId,
+      scheduled_at: now,
+      sent_at: now,
+      card_title: suggestion.title,
+      card_body: suggestion.body,
+      card_payload: suggestion,
+      status: "sent",
+    })
+    .select("*")
+    .single<Reminder>();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function listCommitments(filters?: {
   token?: string;
   status?: string;
-  folder?: string;
 }) {
   const supabase = supabaseAdmin();
   let query = supabase
@@ -165,7 +264,6 @@ export async function listCommitments(filters?: {
     .order("created_at", { ascending: false });
 
   if (filters?.status) query = query.eq("status", filters.status);
-  if (filters?.folder) query = query.eq("folder", filters.folder);
 
   if (filters?.token) {
     const { data: user, error } = await supabase
@@ -212,25 +310,6 @@ export async function updateCommitmentStatus(id: string, status: CommitmentStatu
   const { data, error } = await supabase.from("commitments").update(patch).eq("id", id).select("*").single<Commitment>();
   if (error) throw error;
   return data;
-}
-
-export async function updateCommitmentFolder(id: string, folder: string) {
-  const supabase = supabaseAdmin();
-  const { data, error } = await supabase
-    .from("commitments")
-    .update({ folder })
-    .eq("id", id)
-    .select("*")
-    .single<Commitment>();
-  if (error) throw error;
-  return data;
-}
-
-export async function listFoldersForUser(userId: string) {
-  const supabase = supabaseAdmin();
-  const { data, error } = await supabase.from("commitments").select("folder").eq("user_id", userId);
-  if (error) throw error;
-  return Array.from(new Set((data ?? []).map((item) => item.folder).filter(Boolean))).sort();
 }
 
 export async function updateReminderResponse(commitmentId: string, response: "done" | "snooze" | "skip") {

@@ -66,6 +66,25 @@ create table if not exists reminders (
 create index if not exists idx_reminders_status_scheduled on reminders(status, scheduled_at);
 create index if not exists idx_reminders_user_commitment on reminders(user_id, commitment_id);
 
+create table if not exists saved_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references users(id) on delete cascade not null,
+  original_url text not null,
+  normalized_url text not null,
+  video_id text,
+  title text,
+  description text,
+  author text,
+  cover_url text,
+  tags text[],
+  raw_share_text text,
+  raw_metadata jsonb,
+  created_at timestamptz default now(),
+  unique(user_id, normalized_url)
+);
+
+create index if not exists idx_saved_items_user_created_at on saved_items(user_id, created_at desc);
+
 create table if not exists events (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references users(id) on delete set null,

@@ -1,15 +1,14 @@
 import Link from "next/link";
-import { BarChart3, ExternalLink, Settings } from "lucide-react";
+import { BarChart3, ExternalLink } from "lucide-react";
 import { STATUS_META } from "@/lib/constants";
-import { listCommitments } from "@/lib/db";
-import { defaultFolderNames, folderMeta } from "@/lib/folders";
+import { countSavedItemsForToken, listCommitments } from "@/lib/db";
 import { relativeTime } from "@/lib/time";
 import type { CommitmentWithVideo } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 type PageProps = {
-  searchParams: Promise<{ token?: string; folder?: string; status?: string }>;
+  searchParams: Promise<{ token?: string; status?: string }>;
 };
 
 function stepText(commitment: CommitmentWithVideo) {
@@ -36,7 +35,7 @@ function CommitmentRow({ item, token }: { item: CommitmentWithVideo; token?: str
         <span className="shrink-0 text-xs text-zinc-500">{relativeTime(item.created_at)}</span>
       </div>
       <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
-        <span>{item.folder} · {item.estimated_cost} · {item.best_push_window}</span>
+        <span>{item.estimated_cost} · {item.best_push_window}</span>
         <ExternalLink className="h-3.5 w-3.5" />
       </div>
     </Link>
@@ -76,15 +75,15 @@ function Section({
 export default async function Home({ searchParams }: PageProps) {
   const params = await searchParams;
   let commitments: CommitmentWithVideo[] = [];
-  let allCommitments: CommitmentWithVideo[] = [];
+  let savedItemCount = 0;
   let error = "";
 
   try {
-    allCommitments = await listCommitments({
+    commitments = await listCommitments({
       token: params.token,
       status: params.status,
     });
-    commitments = params.folder ? allCommitments.filter((item) => item.folder === params.folder) : allCommitments;
+    savedItemCount = await countSavedItemsForToken(params.token);
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);
   }
@@ -93,16 +92,6 @@ export default async function Home({ searchParams }: PageProps) {
   const fulfilled = commitments.filter((item) => item.status === "fulfilled");
   const abandoned = commitments.filter((item) => item.status === "abandoned");
   const tokenQuery = params.token ? `?token=${params.token}` : "";
-  const folderNames = Array.from(new Set([...defaultFolderNames(), ...allCommitments.map((item) => item.folder).filter(Boolean)]));
-
-  function dashboardHref(folder?: string) {
-    const query = new URLSearchParams();
-    if (params.token) query.set("token", params.token);
-    if (params.status) query.set("status", params.status);
-    if (folder) query.set("folder", folder);
-    const serialized = query.toString();
-    return serialized ? `/?${serialized}` : "/";
-  }
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-5 sm:px-6 lg:px-8">
@@ -115,30 +104,8 @@ export default async function Home({ searchParams }: PageProps) {
           <Link href={`/insights${tokenQuery}`} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50" title="承诺地图">
             <BarChart3 className="h-4 w-4" />
           </Link>
-          <Link href={`/demo${tokenQuery}`} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50" title="演示控制">
-            <Settings className="h-4 w-4" />
-          </Link>
         </div>
       </header>
-
-      <nav className="mb-5 flex gap-2 overflow-x-auto pb-1">
-        <Link href={dashboardHref()} className="shrink-0 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700">
-          总览 {allCommitments.length}
-        </Link>
-        {folderNames.map((folderName) => {
-          const folder = folderMeta(folderName);
-          const selected = params.folder === folderName;
-          return (
-            <Link
-              key={folder.key}
-              href={dashboardHref(folder.key)}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-sm ${folder.color} ${selected ? "ring-2 ring-zinc-300" : ""}`}
-            >
-              {folder.emoji} {folder.key} {allCommitments.filter((item) => item.folder === folder.key).length}
-            </Link>
-          );
-        })}
-      </nav>
 
       {error ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -153,9 +120,10 @@ export default async function Home({ searchParams }: PageProps) {
           <div className="space-y-6">
             <Section title="放下的承诺" items={abandoned} token={params.token} />
             <section className="rounded-lg border border-zinc-200 bg-white p-4">
-              <h2 className="text-sm font-semibold text-zinc-900">现场入口</h2>
+              <h2 className="text-sm font-semibold text-zinc-900">当前数据列表</h2>
+              <p className="mt-2 text-3xl font-semibold text-zinc-950">{savedItemCount}</p>
               <p className="mt-2 text-sm leading-6 text-zinc-600">
-                飞书卡片里的“打开控制台”会自动带上你的 token。没有 token 时这里显示全部数据，适合团队演示大屏。
+                发抖音链接会先加入这里。发送“总结”后，念念会生成推送内容并清空数据列表。
               </p>
             </section>
           </div>
