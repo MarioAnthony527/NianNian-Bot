@@ -12,8 +12,8 @@ type PageProps = {
 };
 
 function stepText(commitment: CommitmentWithVideo) {
-  const steps = Array.isArray(commitment.executable_steps) ? commitment.executable_steps : [];
-  return steps.slice(0, 2).join(" / ") || "等待 AI 整理步骤";
+  const latestReminder = commitment.reminders?.[0];
+  return latestReminder?.card_body || "已生成视频回看提醒";
 }
 
 function CommitmentRow({ item, token }: { item: CommitmentWithVideo; token?: string }) {

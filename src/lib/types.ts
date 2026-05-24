@@ -101,8 +101,9 @@ export type ReminderCopy = {
 
 export type SummarySuggestion = {
   title: string;
-  body: string;
-  steps: string[];
+  video_summary: string;
+  source_index: number;
+  video_url?: string;
   estimated_cost: string;
   best_push_window: string;
   tone_hint: string;

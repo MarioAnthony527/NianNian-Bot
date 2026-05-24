@@ -242,7 +242,7 @@ export async function createSentReminder(userId: string, commitmentId: string, s
       scheduled_at: now,
       sent_at: now,
       card_title: suggestion.title,
-      card_body: suggestion.body,
+      card_body: suggestion.video_summary,
       card_payload: suggestion,
       status: "sent",
     })

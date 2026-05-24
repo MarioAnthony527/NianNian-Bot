@@ -44,6 +44,11 @@ function savedItemToParsed(item: SavedItem): ParsedDouyin {
   };
 }
 
+function sourceItemForSuggestion(items: SavedItem[], sourceIndex: number) {
+  const index = Number.isFinite(sourceIndex) ? Math.max(0, Math.min(items.length - 1, sourceIndex - 1)) : 0;
+  return items[index] ?? items[0];
+}
+
 export async function handleIncomingFeishuMessage(input: {
   openId: string;
   userId?: string | null;
@@ -115,21 +120,29 @@ async function summarizeCurrentSavedItems(user: User, openId: string) {
 
   try {
     const result = await summarizeSavedItems(items);
-    const suggestions = result.suggestions.slice(0, 2);
-    const firstVideo = await upsertVideo(user.id, savedItemToParsed(items[0]));
+    const suggestions = result.suggestions.slice(0, 2).map((suggestion) => {
+      const source = sourceItemForSuggestion(items, suggestion.source_index);
+      return {
+        ...suggestion,
+        source_index: items.indexOf(source) + 1,
+        video_url: source.normalized_url || source.original_url,
+      };
+    });
 
     for (const suggestion of suggestions) {
+      const source = sourceItemForSuggestion(items, suggestion.source_index);
+      const video = await upsertVideo(user.id, savedItemToParsed(source));
       const analysis: AnalyzeResult = {
         is_real_commitment: true,
         noise_reason: "",
         folder: DEFAULT_FOLDER,
         commitment_summary: suggestion.title,
-        executable_steps: suggestion.steps,
+        executable_steps: [],
         estimated_cost: suggestion.estimated_cost,
         best_push_window: suggestion.best_push_window,
         tone_hint: suggestion.tone_hint,
       };
-      const commitment = await createCommitment(user.id, firstVideo.id, analysis, { skipDedupe: true });
+      const commitment = await createCommitment(user.id, video.id, analysis, { skipDedupe: true });
       await createSentReminder(user.id, commitment.id, suggestion);
     }
 

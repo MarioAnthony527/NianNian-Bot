@@ -29,8 +29,8 @@ export default async function CommitmentDetailPage({ params, searchParams }: Pag
     );
   }
 
-  const steps = Array.isArray(commitment.executable_steps) ? commitment.executable_steps : [];
   const video = commitment.videos;
+  const latestReminder = commitment.reminders?.[0];
 
   return (
     <main className="mx-auto min-h-screen max-w-3xl px-4 py-6 sm:px-6">
@@ -76,17 +76,14 @@ export default async function CommitmentDetailPage({ params, searchParams }: Pag
             </dl>
           </section>
 
-          <section>
-            <h2 className="text-sm font-semibold text-zinc-900">可执行步骤</h2>
-            <ol className="mt-3 space-y-2">
-              {steps.map((step, index) => (
-                <li key={`${step}-${index}`} className="flex gap-3 rounded-lg border border-zinc-200 px-3 py-2 text-sm">
-                  <span className="text-zinc-400">{index + 1}</span>
-                  <span>{step}</span>
-                </li>
-              ))}
-            </ol>
-          </section>
+          {latestReminder?.card_body ? (
+            <section>
+              <h2 className="text-sm font-semibold text-zinc-900">视频概括</h2>
+              <p className="mt-3 rounded-lg border border-zinc-200 px-3 py-2 text-sm leading-6 text-zinc-700">
+                {latestReminder.card_body}
+              </p>
+            </section>
+          ) : null}
 
         </div>
       </article>

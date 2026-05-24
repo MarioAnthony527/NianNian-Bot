@@ -34,8 +34,8 @@ const summarySchema = z.object({
   suggestions: z.array(
     z.object({
       title: z.string().min(1).max(30),
-      body: z.string().min(1).max(160),
-      steps: z.array(z.string().min(1).max(24)).min(1).max(3),
+      video_summary: z.string().min(1).max(160),
+      source_index: z.number().int().min(1),
       estimated_cost: z.string().min(1).max(20),
       best_push_window: z.string().min(1).max(20),
       tone_hint: z.string().min(1).max(20),
@@ -67,13 +67,18 @@ function fallbackAnalysis(parsed: ParsedDouyin, reason = ""): AnalyzeResult {
 }
 
 function fallbackSummary(items: SavedItem[]): SummaryResult {
+  const first = items[0];
+  const summary = first
+    ? compactText(first.description || first.raw_share_text || first.title || "这条视频", "这条视频")
+    : "这条视频";
+
   return {
-    summary: `本批共 ${items.length} 条收藏，已整理成一个低压力回看动作。`,
+    summary: `本批共 ${items.length} 条收藏，先提醒回看其中一条。`,
     suggestions: [
       {
-        title: "回看本批收藏",
-        body: "花 5 分钟从这些收藏里选一个最想继续的方向，不需要一次做完。",
-        steps: ["打开一条最想看的", "记下一个可做点", "决定是否继续"],
+        title: "回看这条视频",
+        video_summary: `${summary}。`,
+        source_index: 1,
         estimated_cost: "5分钟",
         best_push_window: "随时",
         tone_hint: "兴趣型",
@@ -212,15 +217,16 @@ export async function summarizeSavedItems(items: SavedItem[]): Promise<SummaryRe
       schema: summarySchema,
       temperature: 0.35,
       system:
-        "你是「念念」的批量整理引擎。用户把一批抖音收藏丢给你，你要把它们压缩成 1-2 条低压力、可执行的提醒内容。只输出严格 JSON。",
-      user: `请总结当前这批收藏，生成 1-2 条适合直接推送给用户的提醒内容。
+        "你是「念念」的批量整理引擎。用户把一批抖音收藏丢给你，你要生成 1-2 条提醒用户回看视频的推送内容。只输出严格 JSON。",
+      user: `请总结当前这批收藏，生成 1-2 条适合直接推送给用户的“回看视频”提醒。
 
 【重要原则】
-- 不过滤、不丢弃用户收藏。
-- 不要逐条生成提醒，要把整批收藏压缩成 1-2 个方向。
-- 内容很杂时，生成“回看本批收藏，挑一个行动点”的低压力提醒。
-- 不要编造视频里没有的具体事实；只能基于标题、描述、分享文案做保守归纳。
-- 标题要短，正文要像提醒，不要像报告。
+- 不要写步骤指导。
+- 每条提醒必须对应一个原始视频，用 source_index 指向下面列表里的 index。
+- 不要编造视频链接，链接由系统根据 source_index 自动补。
+- video_summary 用一句话概括这个视频大致内容，保守基于标题、描述、分享文案。
+- 如果内容很杂，就选 1-2 条最适合回看的代表视频。
+- 标题要短，像“回看 Claude 手表视频”这种提醒标题。
 
 【当前收藏，共 ${items.length} 条】
 ${JSON.stringify(compactItems, null, 2)}
@@ -231,9 +237,9 @@ ${JSON.stringify(compactItems, null, 2)}
   "suggestions": [
     {
       "title": "≤18字提醒标题",
-      "body": "≤80字推送正文",
-      "steps": ["≤18字", "≤18字", "≤18字"],
-      "estimated_cost": "5分钟|15分钟|半小时|半天|更长",
+      "video_summary": "≤80字，一句话概括视频大致内容",
+      "source_index": 1,
+      "estimated_cost": "5分钟|15分钟",
       "best_push_window": "饭点前|周末早上|工作日晚上|睡前|通勤时段|随时",
       "tone_hint": "兴趣型|实用型|向往型|焦虑型"
     }

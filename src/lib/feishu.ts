@@ -99,11 +99,10 @@ function markdown(text: string) {
 export function summaryPushCard(result: SummaryResult, itemCount: number) {
   const suggestionText = result.suggestions
     .map((suggestion, index) => {
-      const steps = suggestion.steps.map((step, stepIndex) => `${stepIndex + 1}. ${step}`).join("\n");
       return (
         `**提醒 ${index + 1} / ${result.suggestions.length}：${suggestion.title}**\n` +
-        `${suggestion.body}\n\n` +
-        `步骤：\n${steps}\n\n` +
+        `${suggestion.video_summary}\n\n` +
+        `视频链接：${suggestion.video_url ?? "暂无链接"}\n\n` +
         `预计：${suggestion.estimated_cost} · 适合：${suggestion.best_push_window}`
       );
     })
