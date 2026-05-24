@@ -67,13 +67,46 @@ function fallbackAnalysis(parsed: ParsedDouyin, reason = ""): AnalyzeResult {
 }
 
 function fallbackSummary(items: SavedItem[]): SummaryResult {
+  const suggestions = items.slice(0, 2).map((item, index) => {
+    const summary = compactText(item.description || item.raw_share_text || item.title || "这条视频", "这条视频");
+    return {
+      title: "回看这条视频",
+      video_summary: `${summary}。`,
+      source_index: index + 1,
+      estimated_cost: "5分钟",
+      best_push_window: "随时",
+      tone_hint: "兴趣型",
+    };
+  });
+  const firstSummary = suggestions[0]?.video_summary.replace(/。$/, "") ?? "这条视频";
+
+  return {
+    summary: items.length > 1
+      ? `本批共 ${items.length} 条收藏，先提醒回看其中 ${suggestions.length} 条。`
+      : `这条收藏已整理成回看提醒：${firstSummary}。`,
+    suggestions: suggestions.length
+      ? suggestions
+      : [
+          {
+            title: "回看这条视频",
+            video_summary: "这条视频。",
+            source_index: 1,
+            estimated_cost: "5分钟",
+            best_push_window: "随时",
+            tone_hint: "兴趣型",
+          },
+        ],
+  };
+}
+
+function oneItemSummary(items: SavedItem[]): SummaryResult {
   const first = items[0];
   const summary = first
     ? compactText(first.description || first.raw_share_text || first.title || "这条视频", "这条视频")
     : "这条视频";
 
   return {
-    summary: `本批共 ${items.length} 条收藏，先提醒回看其中一条。`,
+    summary: `这条收藏已整理成回看提醒：${summary}。`,
     suggestions: [
       {
         title: "回看这条视频",
@@ -201,6 +234,7 @@ export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult>
 
 export async function summarizeSavedItems(items: SavedItem[]): Promise<SummaryResult> {
   if (!items.length) return fallbackSummary(items);
+  if (items.length === 1) return oneItemSummary(items);
 
   const compactItems = items.slice(0, 20).map((item, index) => ({
     index: index + 1,

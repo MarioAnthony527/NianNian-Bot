@@ -17,10 +17,10 @@ import {
 } from "@/lib/db";
 import { DEFAULT_FOLDER } from "@/lib/constants";
 import { extractUrls, parseDouyinUrl } from "@/lib/douyin";
-import { reminderCard, sendFeishuCard, sendFeishuText, summaryPushCard } from "@/lib/feishu";
+import { reminderCard, sendFeishuCard, sendFeishuText, summaryPushCard, summaryPushText } from "@/lib/feishu";
 import { generateReminderCopy, summarizeSavedItems } from "@/lib/llm";
 import { supabaseAdmin } from "@/lib/supabase";
-import type { AnalyzeResult, ParsedDouyin, SavedItem, User } from "@/lib/types";
+import type { AnalyzeResult, ParsedDouyin, SavedItem, SummarySuggestion, User } from "@/lib/types";
 
 const SUMMARY_COMMANDS = new Set(["总结", "总结一下", "整理", "整理一下", "生成提醒", "生成推送"]);
 
@@ -47,6 +47,36 @@ function savedItemToParsed(item: SavedItem): ParsedDouyin {
 function sourceItemForSuggestion(items: SavedItem[], sourceIndex: number) {
   const index = Number.isFinite(sourceIndex) ? Math.max(0, Math.min(items.length - 1, sourceIndex - 1)) : 0;
   return items[index] ?? items[0];
+}
+
+function unknownErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function enrichUniqueSuggestions(items: SavedItem[], suggestions: SummarySuggestion[]) {
+  const seenItemIds = new Set<string>();
+  const enriched: SummarySuggestion[] = [];
+  const maxCount = Math.min(2, items.length);
+
+  for (const suggestion of suggestions) {
+    const source = sourceItemForSuggestion(items, suggestion.source_index);
+    if (!source || seenItemIds.has(source.id)) continue;
+    seenItemIds.add(source.id);
+    enriched.push({
+      ...suggestion,
+      source_index: items.indexOf(source) + 1,
+      video_url: source.normalized_url || source.original_url,
+    });
+    if (enriched.length >= maxCount) break;
+  }
+
+  return enriched;
 }
 
 export async function handleIncomingFeishuMessage(input: {
@@ -120,14 +150,8 @@ async function summarizeCurrentSavedItems(user: User, openId: string) {
 
   try {
     const result = await summarizeSavedItems(items);
-    const suggestions = result.suggestions.slice(0, 2).map((suggestion) => {
-      const source = sourceItemForSuggestion(items, suggestion.source_index);
-      return {
-        ...suggestion,
-        source_index: items.indexOf(source) + 1,
-        video_url: source.normalized_url || source.original_url,
-      };
-    });
+    const suggestions = enrichUniqueSuggestions(items, result.suggestions);
+    if (!suggestions.length) throw new Error("No summary suggestions generated");
 
     for (const suggestion of suggestions) {
       const source = sourceItemForSuggestion(items, suggestion.source_index);
@@ -150,7 +174,15 @@ async function summarizeCurrentSavedItems(user: User, openId: string) {
     const selectedCount = new Set(selectedItemIds).size;
     const remainingCount = Math.max(0, items.length - selectedCount);
 
-    await sendFeishuCard(openId, summaryPushCard({ ...result, suggestions }, items.length, remainingCount));
+    const finalResult = { ...result, suggestions };
+    try {
+      await sendFeishuCard(openId, summaryPushCard(finalResult, items.length, remainingCount));
+    } catch (cardError) {
+      await logEvent(user.id, "summary_card_send_failed", {
+        message: unknownErrorMessage(cardError),
+      });
+      await sendFeishuText(openId, summaryPushText(finalResult, items.length, remainingCount).replace(/\*\*/g, ""));
+    }
     await deleteSavedItemsByIds(user.id, selectedItemIds);
     await logEvent(user.id, "saved_items_summarized", {
       item_count: items.length,
@@ -161,7 +193,7 @@ async function summarizeCurrentSavedItems(user: User, openId: string) {
   } catch (error) {
     await logEvent(user.id, "saved_items_summary_failed", {
       item_count: items.length,
-      message: error instanceof Error ? error.message : String(error),
+      message: unknownErrorMessage(error),
     });
     await sendFeishuText(openId, "这批数据暂时总结失败。数据列表还在，你可以稍后再发送“总结”。");
   }
