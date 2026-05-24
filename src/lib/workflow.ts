@@ -90,7 +90,7 @@ function enrichUniqueSuggestions(items: SavedItem[], suggestions: SummarySuggest
     enriched.push({
       ...suggestion,
       source_index: items.indexOf(source) + 1,
-      video_url: source.normalized_url || source.original_url,
+      video_url: source.original_url || source.normalized_url,
     });
     if (enriched.length >= maxCount) break;
   }
