@@ -66,9 +66,9 @@ function fallbackAnalysis(parsed: ParsedDouyin, reason = ""): AnalyzeResult {
   };
 }
 
-function fallbackSummary(items: SavedItem[], reason = ""): SummaryResult {
+function fallbackSummary(items: SavedItem[]): SummaryResult {
   return {
-    summary: reason || `本批共 ${items.length} 条收藏，适合先压缩成一个低压力回看动作。`,
+    summary: `本批共 ${items.length} 条收藏，已整理成一个低压力回看动作。`,
     suggestions: [
       {
         title: "回看本批收藏",
@@ -80,6 +80,25 @@ function fallbackSummary(items: SavedItem[], reason = ""): SummaryResult {
       },
     ],
   };
+}
+
+function parseJsonContent(content: string) {
+  let text = content.trim();
+  const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced?.[1]) {
+    text = fenced[1].trim();
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(text.slice(start, end + 1)) as unknown;
+    }
+    throw new Error("LLM did not return parseable JSON");
+  }
 }
 
 async function chatJson<T>(input: {
@@ -117,7 +136,7 @@ async function chatJson<T>(input: {
         choices?: Array<{ message?: { content?: string } }>;
       };
       const content = data.choices?.[0]?.message?.content ?? "{}";
-      return input.schema.parse(JSON.parse(content));
+      return input.schema.parse(parseJsonContent(content));
     } catch (error) {
       lastError = error;
     }
@@ -176,7 +195,7 @@ export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult>
 }
 
 export async function summarizeSavedItems(items: SavedItem[]): Promise<SummaryResult> {
-  if (!items.length) return fallbackSummary(items, "当前没有待总结的数据。");
+  if (!items.length) return fallbackSummary(items);
 
   const compactItems = items.slice(0, 20).map((item, index) => ({
     index: index + 1,
@@ -222,7 +241,8 @@ ${JSON.stringify(compactItems, null, 2)}
 }`,
     });
   } catch (error) {
-    return fallbackSummary(items, error instanceof Error ? error.message : "批量总结失败，使用兜底提醒。");
+    console.error("Saved item summary failed", error);
+    return fallbackSummary(items);
   }
 }
 
