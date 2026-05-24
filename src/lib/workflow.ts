@@ -210,7 +210,7 @@ export async function handleIncomingFeishuMessage(input: {
 
     await sendFeishuText(
       input.openId,
-      `${created ? "已添加到数据列表。" : "这条已经在数据列表里。"}当前 ${count} 条。发送“总结”即可生成推送内容。${
+      `${created ? "已添加到数据列表。" : "这条已经在数据列表里。"}当前 ${count} 条。${
         isNoteLink(parsed.normalizedUrl)
           ? "\n提示：这条可能是图文，MVP 暂不支持图文音频识别，后续总结会以分享文案为准。"
           : ""
