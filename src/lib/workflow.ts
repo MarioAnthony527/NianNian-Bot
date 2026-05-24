@@ -26,6 +26,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import type { AnalyzeResult, ParsedDouyin, SavedItem, SummarySuggestion, User } from "@/lib/types";
 
 const SUMMARY_COMMANDS = new Set(["总结", "总结一下", "整理", "整理一下", "生成提醒", "生成推送"]);
+const WEEKLY_TEST_COMMANDS = new Set(["测试", "测试推送", "测试周推送", "测试每周推送"]);
 
 type SummaryMode = "manual" | "weekly";
 
@@ -54,6 +55,11 @@ function isNoteLink(url: string) {
 function isSummaryCommand(text: string) {
   const normalized = text.replace(/[\s。.!！]/g, "");
   return SUMMARY_COMMANDS.has(normalized);
+}
+
+function isWeeklyTestCommand(text: string) {
+  const normalized = text.replace(/[\s。.!！]/g, "");
+  return WEEKLY_TEST_COMMANDS.has(normalized);
 }
 
 function savedItemToParsed(item: SavedItem): ParsedDouyin {
@@ -184,6 +190,17 @@ export async function handleIncomingFeishuMessage(input: {
       openId: input.openId,
       mode: "manual",
       maxSuggestions: 2,
+      notifyWhenEmpty: true,
+      notifyOnFailure: true,
+    });
+    return;
+  }
+
+  if (isWeeklyTestCommand(input.text)) {
+    await summarizeUserSavedItems(user, {
+      openId: input.openId,
+      mode: "weekly",
+      maxSuggestions: 4,
       notifyWhenEmpty: true,
       notifyOnFailure: true,
     });
