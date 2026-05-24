@@ -157,6 +157,15 @@ export async function deleteSavedItemsForUser(userId: string) {
   if (error) throw error;
 }
 
+export async function deleteSavedItemsByIds(userId: string, ids: string[]) {
+  const uniqueIds = Array.from(new Set(ids)).filter(Boolean);
+  if (!uniqueIds.length) return;
+
+  const supabase = supabaseAdmin();
+  const { error } = await supabase.from("saved_items").delete().eq("user_id", userId).in("id", uniqueIds);
+  if (error) throw error;
+}
+
 export async function createCommitment(
   userId: string,
   videoId: string,

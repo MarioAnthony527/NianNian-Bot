@@ -96,7 +96,7 @@ function markdown(text: string) {
   return { tag: "markdown", content: text };
 }
 
-export function summaryPushCard(result: SummaryResult, itemCount: number) {
+export function summaryPushCard(result: SummaryResult, itemCount: number, remainingCount: number) {
   const suggestionText = result.suggestions
     .map((suggestion, index) => {
       return (
@@ -108,6 +108,11 @@ export function summaryPushCard(result: SummaryResult, itemCount: number) {
     })
     .join("\n\n---\n\n");
 
+  const intro =
+    remainingCount > 0
+      ? `我从当前 ${itemCount} 条收藏里生成 ${result.suggestions.length} 条重点提醒，剩余 ${remainingCount} 条继续留在数据列表。之后再发送“总结”可以继续整理。`
+      : `我整理了当前 ${itemCount} 条收藏，已生成 ${result.suggestions.length} 条提醒，数据列表暂时清空。`;
+
   return {
     config: { wide_screen_mode: true },
     header: {
@@ -116,7 +121,7 @@ export function summaryPushCard(result: SummaryResult, itemCount: number) {
     },
     elements: [
       markdown(
-        `我整理了当前 ${itemCount} 条收藏，并清空数据列表。\n\n` +
+        `${intro}\n\n` +
           `${result.summary}\n\n` +
           `${suggestionText}`,
       ),

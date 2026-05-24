@@ -3,7 +3,7 @@ import {
   createSentReminder,
   countSavedItemsForUser,
   deleteCommitment,
-  deleteSavedItemsForUser,
+  deleteSavedItemsByIds,
   getCommitment,
   getOrCreateUser,
   hasProcessedFeishuMessage,
@@ -146,11 +146,16 @@ async function summarizeCurrentSavedItems(user: User, openId: string) {
       await createSentReminder(user.id, commitment.id, suggestion);
     }
 
-    await sendFeishuCard(openId, summaryPushCard({ ...result, suggestions }, items.length));
-    await deleteSavedItemsForUser(user.id);
+    const selectedItemIds = suggestions.map((suggestion) => sourceItemForSuggestion(items, suggestion.source_index).id);
+    const selectedCount = new Set(selectedItemIds).size;
+    const remainingCount = Math.max(0, items.length - selectedCount);
+
+    await sendFeishuCard(openId, summaryPushCard({ ...result, suggestions }, items.length, remainingCount));
+    await deleteSavedItemsByIds(user.id, selectedItemIds);
     await logEvent(user.id, "saved_items_summarized", {
       item_count: items.length,
       suggestion_count: suggestions.length,
+      remaining_count: remainingCount,
       summary: result.summary,
     });
   } catch (error) {

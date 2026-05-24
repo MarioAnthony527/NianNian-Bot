@@ -123,7 +123,7 @@ export default async function Home({ searchParams }: PageProps) {
               <h2 className="text-sm font-semibold text-zinc-900">当前数据列表</h2>
               <p className="mt-2 text-3xl font-semibold text-zinc-950">{savedItemCount}</p>
               <p className="mt-2 text-sm leading-6 text-zinc-600">
-                发抖音链接会先加入这里。发送“总结”后，念念会生成推送内容并清空数据列表。
+                发抖音链接会先加入这里。发送“总结”后，念念会生成最多两条重点提醒，未被选中的内容会继续保留。
               </p>
             </section>
           </div>
