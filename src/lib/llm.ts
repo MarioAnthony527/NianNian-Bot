@@ -44,12 +44,37 @@ const summarySchema = z.object({
 });
 
 function compactText(text: string, fallback: string) {
-  const cleaned = text
+  let source = text
     .replace(/https?:\/\/\S+/g, "")
-    .replace(/复制打开抖音|看看|的作品|aan:|jpq:|[A-Za-z]@[A-Za-z]\.[A-Za-z]+|\d{2}\/\d{2}|:\d+[ap]m/gi, "")
+    .replace(/复制此链接，?打开【?抖音】?，?直接观看视频！?/g, "")
+    .replace(/[A-Za-z]{1,4}:\/|[A-Za-z]@[A-Za-z]\.[A-Za-z]+/g, "")
+    .replace(/\b\d+(?:\.\d+)?\s*复制打开抖音，?看看/g, "看看")
+    .replace(/\d{4}[./-]\d{1,2}[./-]\d{1,2}(?:\s*(?:晚上|早上|上午|下午|中午|凌晨)?\d{1,2}点\d{0,2}分?)?/g, "")
+    .replace(/\b\d{1,2}\/\d{1,2}\b|:\d+\s*[ap]m\b/gi, "")
+    .replace(/(?:晚上|早上|上午|下午|中午|凌晨)?\d{1,2}点\d{0,2}分?/g, "");
+
+  const shareMatch = source.match(/看看【[^】]+】([\s\S]*)/);
+  if (shareMatch?.[1]) source = shareMatch[1];
+
+  const cleaned = source
+    .replace(/复制打开抖音|看看|的(?:图文)?作品/g, "")
     .replace(/[【】#：:，,。.\s]+/g, " ")
     .trim();
+
   return (cleaned || fallback).slice(0, 28);
+}
+
+function compactSavedItem(item: SavedItem, index: number) {
+  const sourceText = item.description || item.raw_share_text || item.title || "";
+  return {
+    index: index + 1,
+    title: item.title || "抖音分享",
+    description: item.description || "",
+    author: item.author || "",
+    tags: item.tags ?? [],
+    share_text: item.raw_share_text || "",
+    cleaned_text: compactText(sourceText, item.title || "这条视频"),
+  };
 }
 
 function fallbackAnalysis(parsed: ParsedDouyin, reason = ""): AnalyzeResult {
@@ -96,27 +121,6 @@ function fallbackSummary(items: SavedItem[]): SummaryResult {
             tone_hint: "兴趣型",
           },
         ],
-  };
-}
-
-function oneItemSummary(items: SavedItem[]): SummaryResult {
-  const first = items[0];
-  const summary = first
-    ? compactText(first.description || first.raw_share_text || first.title || "这条视频", "这条视频")
-    : "这条视频";
-
-  return {
-    summary: `这条收藏已整理成回看提醒：${summary}。`,
-    suggestions: [
-      {
-        title: "回看这条视频",
-        video_summary: `${summary}。`,
-        source_index: 1,
-        estimated_cost: "5分钟",
-        best_push_window: "随时",
-        tone_hint: "兴趣型",
-      },
-    ],
   };
 }
 
@@ -234,16 +238,9 @@ export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult>
 
 export async function summarizeSavedItems(items: SavedItem[]): Promise<SummaryResult> {
   if (!items.length) return fallbackSummary(items);
-  if (items.length === 1) return oneItemSummary(items);
 
-  const compactItems = items.slice(0, 20).map((item, index) => ({
-    index: index + 1,
-    title: item.title || "抖音分享",
-    description: item.description || "",
-    author: item.author || "",
-    tags: item.tags ?? [],
-    share_text: item.raw_share_text || "",
-  }));
+  const compactItems = items.slice(0, 20).map(compactSavedItem);
+  const targetCount = Math.min(2, items.length);
 
   try {
     return await chatJson({
@@ -252,15 +249,18 @@ export async function summarizeSavedItems(items: SavedItem[]): Promise<SummaryRe
       temperature: 0.35,
       system:
         "你是「念念」的批量整理引擎。用户把一批抖音收藏丢给你，你要生成 1-2 条提醒用户回看视频的推送内容。只输出严格 JSON。",
-      user: `请总结当前这批收藏，生成 1-2 条适合直接推送给用户的“回看视频”提醒。
+      user: `请总结当前这批收藏，生成 ${targetCount} 条适合直接推送给用户的“回看视频”提醒。
 
 【重要原则】
 - 不要写步骤指导。
 - 每条提醒必须对应一个原始视频，用 source_index 指向下面列表里的 index。
 - 不要编造视频链接，链接由系统根据 source_index 自动补。
 - video_summary 用一句话概括这个视频大致内容，保守基于标题、描述、分享文案。
+- 忽略分享口令数字、复制提示、作者名、日期时间、平台噪音；不要把日期当成视频内容。
+- 如果只有一条收藏，也要理解 cleaned_text / share_text 后生成自然概括，不要照抄原始分享文案。
 - 如果内容很杂，就选 1-2 条最适合回看的代表视频。
 - 标题要短，像“回看 Claude 手表视频”这种提醒标题。
+- 如果信息确实不足，就写“这条图文分享内容不完整，建议点开回看确认重点”，不要编造。
 
 【当前收藏，共 ${items.length} 条】
 ${JSON.stringify(compactItems, null, 2)}
