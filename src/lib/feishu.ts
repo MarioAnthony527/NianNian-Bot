@@ -96,11 +96,18 @@ function markdown(text: string) {
   return { tag: "markdown", content: text };
 }
 
-export function summaryPushText(result: SummaryResult, itemCount: number, remainingCount: number) {
+type SummaryPushMode = "manual" | "weekly";
+
+export function summaryPushText(
+  result: SummaryResult,
+  itemCount: number,
+  remainingCount: number,
+  mode: SummaryPushMode = "manual",
+) {
   const suggestionText = result.suggestions
     .map((suggestion, index) => {
       return (
-        `**提醒 ${index + 1} / ${result.suggestions.length}：${suggestion.title}**\n` +
+        `**${mode === "weekly" ? "本周精选" : "提醒"} ${index + 1} / ${result.suggestions.length}：${suggestion.title}**\n` +
         `${suggestion.video_summary}\n\n` +
         `视频链接：${suggestion.video_url ?? "暂无链接"}\n\n` +
         `预计：${suggestion.estimated_cost} · 适合：${suggestion.best_push_window}`
@@ -108,23 +115,31 @@ export function summaryPushText(result: SummaryResult, itemCount: number, remain
     })
     .join("\n\n---\n\n");
 
-  const intro =
-    remainingCount > 0
+  const intro = mode === "weekly"
+    ? remainingCount > 0
+      ? `到了本周整理时间。我从当前 ${itemCount} 条收藏里整理出 ${result.suggestions.length} 个方向，剩余 ${remainingCount} 条继续留在数据列表。`
+      : `到了本周整理时间。我整理了当前 ${itemCount} 条收藏，生成 ${result.suggestions.length} 条本周精选，数据列表暂时清空。`
+    : remainingCount > 0
       ? `我从当前 ${itemCount} 条收藏里生成 ${result.suggestions.length} 条重点提醒，剩余 ${remainingCount} 条继续留在数据列表。之后再发送“总结”可以继续整理。`
       : `我整理了当前 ${itemCount} 条收藏，已生成 ${result.suggestions.length} 条提醒，数据列表暂时清空。`;
 
   return `${intro}\n\n${result.summary}\n\n${suggestionText}`;
 }
 
-export function summaryPushCard(result: SummaryResult, itemCount: number, remainingCount: number) {
+export function summaryPushCard(
+  result: SummaryResult,
+  itemCount: number,
+  remainingCount: number,
+  mode: SummaryPushMode = "manual",
+) {
   return {
     config: { wide_screen_mode: true },
     header: {
       template: "turquoise",
-      title: { tag: "plain_text", content: "已生成本批提醒" },
+      title: { tag: "plain_text", content: mode === "weekly" ? "本周收藏精选" : "已生成本批提醒" },
     },
     elements: [
-      markdown(summaryPushText(result, itemCount, remainingCount)),
+      markdown(summaryPushText(result, itemCount, remainingCount, mode)),
     ],
   };
 }

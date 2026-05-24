@@ -29,19 +29,21 @@ const copySchema = z.object({
   body_steps: z.array(z.string()).min(1).max(5),
 });
 
-const summarySchema = z.object({
-  summary: z.string().min(1).max(160),
-  suggestions: z.array(
-    z.object({
-      title: z.string().min(1).max(30),
-      video_summary: z.string().min(1).max(160),
-      source_index: z.number().int().min(1),
-      estimated_cost: z.string().min(1).max(20),
-      best_push_window: z.string().min(1).max(20),
-      tone_hint: z.string().min(1).max(20),
-    }),
-  ).min(1).max(2),
-});
+function summarySchemaFor(maxSuggestions: number) {
+  return z.object({
+    summary: z.string().min(1).max(180),
+    suggestions: z.array(
+      z.object({
+        title: z.string().min(1).max(30),
+        video_summary: z.string().min(1).max(180),
+        source_index: z.number().int().min(1),
+        estimated_cost: z.string().min(1).max(20),
+        best_push_window: z.string().min(1).max(20),
+        tone_hint: z.string().min(1).max(20),
+      }),
+    ).min(1).max(maxSuggestions),
+  });
+}
 
 function compactText(text: string, fallback: string) {
   let source = text
@@ -97,8 +99,8 @@ function fallbackAnalysis(parsed: ParsedDouyin, reason = ""): AnalyzeResult {
   };
 }
 
-function fallbackSummary(items: SavedItem[]): SummaryResult {
-  const suggestions = items.slice(0, 2).map((item, index) => {
+function fallbackSummary(items: SavedItem[], maxSuggestions = 2): SummaryResult {
+  const suggestions = items.slice(0, maxSuggestions).map((item, index) => {
     const summary = compactText(item.description || item.raw_share_text || item.title || "这条视频", "这条视频");
     return {
       title: "回看这条视频",
@@ -242,20 +244,29 @@ export async function analyzeVideo(parsed: ParsedDouyin): Promise<AnalyzeResult>
   }
 }
 
-export async function summarizeSavedItems(items: SavedItem[]): Promise<SummaryResult> {
-  if (!items.length) return fallbackSummary(items);
+export async function summarizeSavedItems(
+  items: SavedItem[],
+  options: { mode?: "manual" | "weekly"; maxSuggestions?: number } = {},
+): Promise<SummaryResult> {
+  const mode = options.mode ?? "manual";
+  const maxSuggestions = Math.max(1, Math.min(options.maxSuggestions ?? 2, 5));
+  if (!items.length) return fallbackSummary(items, maxSuggestions);
 
   const compactItems = items.slice(0, 20).map(compactSavedItem);
-  const targetCount = Math.min(2, items.length);
+  const targetCount = Math.min(maxSuggestions, items.length);
+  const weeklyGuidance =
+    mode === "weekly"
+      ? "\n- 这是每周五自动整理，要尽量按主题方向归并；同主题视频不要重复推，选择一个代表视频即可。\n- 输出像周报精选，不要像临时命令回复。"
+      : "";
 
   try {
     return await chatJson({
       model: config.llmModelAnalyze,
-      schema: summarySchema,
+      schema: summarySchemaFor(maxSuggestions),
       temperature: 0.35,
       system:
-        "你是「念念」的批量整理引擎。用户把一批抖音收藏丢给你，你要生成 1-2 条提醒用户回看视频的推送内容。只输出严格 JSON。",
-      user: `请总结当前这批收藏，生成 ${targetCount} 条适合直接推送给用户的“回看视频”提醒。
+        "你是「念念」的批量整理引擎。用户把一批抖音收藏丢给你，你要生成适合推送给用户回看的内容。只输出严格 JSON。",
+      user: `请总结当前这批收藏，生成最多 ${targetCount} 条适合直接推送给用户的“回看视频”提醒。
 
 【重要原则】
 - 不要写步骤指导。
@@ -265,9 +276,10 @@ export async function summarizeSavedItems(items: SavedItem[]): Promise<SummaryRe
 - 如果 asr_text 非空，优先参考 asr_text，它是视频前段音频字幕，通常比分享标题更接近真实内容。
 - 忽略分享口令数字、复制提示、作者名、日期时间、平台噪音；不要把日期当成视频内容。
 - 如果只有一条收藏，也要理解 cleaned_text / share_text 后生成自然概括，不要照抄原始分享文案。
-- 如果内容很杂，就选 1-2 条最适合回看的代表视频。
+- 如果内容很杂，就选最多 ${targetCount} 条最适合回看的代表视频。
 - 标题要短，像“回看 Claude 手表视频”这种提醒标题。
 - 如果信息确实不足，就写“这条图文分享内容不完整，建议点开回看确认重点”，不要编造。
+${weeklyGuidance}
 
 【当前收藏，共 ${items.length} 条】
 ${JSON.stringify(compactItems, null, 2)}
@@ -289,7 +301,7 @@ ${JSON.stringify(compactItems, null, 2)}
     });
   } catch (error) {
     console.error("Saved item summary failed", error);
-    return fallbackSummary(items);
+    return fallbackSummary(items, maxSuggestions);
   }
 }
 

@@ -27,6 +27,16 @@ import type { AnalyzeResult, ParsedDouyin, SavedItem, SummarySuggestion, User } 
 
 const SUMMARY_COMMANDS = new Set(["总结", "总结一下", "整理", "整理一下", "生成提醒", "生成推送"]);
 
+type SummaryMode = "manual" | "weekly";
+
+type SummarizeUserOptions = {
+  openId?: string;
+  mode?: SummaryMode;
+  maxSuggestions?: number;
+  notifyWhenEmpty?: boolean;
+  notifyOnFailure?: boolean;
+};
+
 function metadataString(item: SavedItem, key: string) {
   const value = item.raw_metadata?.[key];
   return typeof value === "string" ? value : "";
@@ -78,10 +88,10 @@ function unknownErrorMessage(error: unknown) {
   }
 }
 
-function enrichUniqueSuggestions(items: SavedItem[], suggestions: SummarySuggestion[]) {
+function enrichUniqueSuggestions(items: SavedItem[], suggestions: SummarySuggestion[], maxSuggestions = 2) {
   const seenItemIds = new Set<string>();
   const enriched: SummarySuggestion[] = [];
-  const maxCount = Math.min(2, items.length);
+  const maxCount = Math.min(maxSuggestions, items.length);
 
   for (const suggestion of suggestions) {
     const source = sourceItemForSuggestion(items, suggestion.source_index);
@@ -98,8 +108,8 @@ function enrichUniqueSuggestions(items: SavedItem[], suggestions: SummarySuggest
   return enriched;
 }
 
-async function enrichItemsWithAsr(user: User, items: SavedItem[]) {
-  const maxItems = Math.max(0, config.asrSummaryMaxItems);
+async function enrichItemsWithAsr(user: User, items: SavedItem[], requestedMaxItems = config.asrSummaryMaxItems) {
+  const maxItems = Math.max(0, requestedMaxItems);
   if (!config.enableAsr || maxItems === 0) return items;
 
   const enriched = [...items];
@@ -170,7 +180,13 @@ export async function handleIncomingFeishuMessage(input: {
   }
 
   if (isSummaryCommand(input.text)) {
-    await summarizeCurrentSavedItems(user, input.openId);
+    await summarizeUserSavedItems(user, {
+      openId: input.openId,
+      mode: "manual",
+      maxSuggestions: 2,
+      notifyWhenEmpty: true,
+      notifyOnFailure: true,
+    });
     return;
   }
 
@@ -214,17 +230,24 @@ export async function handleIncomingFeishuMessage(input: {
   }
 }
 
-async function summarizeCurrentSavedItems(user: User, openId: string) {
+export async function summarizeUserSavedItems(user: User, options: SummarizeUserOptions = {}) {
+  const mode = options.mode ?? "manual";
+  const openId = options.openId ?? user.feishu_open_id;
+  const maxSuggestions = Math.max(1, Math.min(options.maxSuggestions ?? (mode === "weekly" ? 4 : 2), 5));
+  const notifyWhenEmpty = options.notifyWhenEmpty ?? mode === "manual";
+  const notifyOnFailure = options.notifyOnFailure ?? mode === "manual";
   const items = await listSavedItemsForUser(user.id);
   if (!items.length) {
-    await sendFeishuText(openId, "当前数据列表为空，先发几条抖音链接给我。");
-    return;
+    if (notifyWhenEmpty) {
+      await sendFeishuText(openId, "当前数据列表为空，先发几条抖音链接给我。");
+    }
+    return { ok: true, skipped: "empty", itemCount: 0, suggestionCount: 0, remainingCount: 0 };
   }
 
   try {
-    const enrichedItems = await enrichItemsWithAsr(user, items);
-    const result = await summarizeSavedItems(enrichedItems);
-    const suggestions = enrichUniqueSuggestions(enrichedItems, result.suggestions);
+    const enrichedItems = await enrichItemsWithAsr(user, items, Math.max(config.asrSummaryMaxItems, maxSuggestions));
+    const result = await summarizeSavedItems(enrichedItems, { mode, maxSuggestions });
+    const suggestions = enrichUniqueSuggestions(enrichedItems, result.suggestions, maxSuggestions);
     if (!suggestions.length) throw new Error("No summary suggestions generated");
 
     for (const suggestion of suggestions) {
@@ -250,26 +273,33 @@ async function summarizeCurrentSavedItems(user: User, openId: string) {
 
     const finalResult = { ...result, suggestions };
     try {
-      await sendFeishuCard(openId, summaryPushCard(finalResult, items.length, remainingCount));
+      await sendFeishuCard(openId, summaryPushCard(finalResult, items.length, remainingCount, mode));
     } catch (cardError) {
       await logEvent(user.id, "summary_card_send_failed", {
         message: unknownErrorMessage(cardError),
       });
-      await sendFeishuText(openId, summaryPushText(finalResult, items.length, remainingCount).replace(/\*\*/g, ""));
+      await sendFeishuText(openId, summaryPushText(finalResult, items.length, remainingCount, mode).replace(/\*\*/g, ""));
     }
     await deleteSavedItemsByIds(user.id, selectedItemIds);
     await logEvent(user.id, "saved_items_summarized", {
       item_count: items.length,
       suggestion_count: suggestions.length,
       remaining_count: remainingCount,
+      mode,
       summary: result.summary,
     });
+    return { ok: true, itemCount: items.length, suggestionCount: suggestions.length, remainingCount };
   } catch (error) {
+    const message = unknownErrorMessage(error);
     await logEvent(user.id, "saved_items_summary_failed", {
       item_count: items.length,
-      message: unknownErrorMessage(error),
+      mode,
+      message,
     });
-    await sendFeishuText(openId, "这批数据暂时总结失败。数据列表还在，你可以稍后再发送“总结”。");
+    if (notifyOnFailure) {
+      await sendFeishuText(openId, "这批数据暂时总结失败。数据列表还在，你可以稍后再发送“总结”。");
+    }
+    return { ok: false, itemCount: items.length, suggestionCount: 0, remainingCount: items.length, error: message };
   }
 }
 

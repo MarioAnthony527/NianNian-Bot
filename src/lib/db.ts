@@ -156,6 +156,24 @@ export async function countSavedItemsForToken(token?: string) {
   return count ?? 0;
 }
 
+export async function listUsersWithSavedItems() {
+  const supabase = supabaseAdmin();
+  const { data: rows, error: rowsError } = await supabase
+    .from("saved_items")
+    .select("user_id")
+    .order("created_at", { ascending: true });
+
+  if (rowsError) throw rowsError;
+
+  const userIds = Array.from(new Set((rows ?? []).map((row) => row.user_id).filter(Boolean)));
+  if (!userIds.length) return [];
+
+  const { data, error } = await supabase.from("users").select("*").in("id", userIds).returns<User[]>();
+  if (error) throw error;
+
+  return data ?? [];
+}
+
 export async function deleteSavedItemsForUser(userId: string) {
   const supabase = supabaseAdmin();
   const { error } = await supabase.from("saved_items").delete().eq("user_id", userId);

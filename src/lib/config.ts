@@ -16,6 +16,7 @@ export const config = {
   llmModelCopy: readEnv("LLM_MODEL_COPY", "gpt-4o-mini"),
   douyinParserBaseUrl: readEnv("DOUYIN_PARSER_BASE_URL"),
   demoSecret: readEnv("DEMO_SECRET", "demo-local"),
+  cronSecret: readEnv("CRON_SECRET"),
   enableAsr: readEnv("ENABLE_ASR", "true") !== "false",
   asrProvider: readEnv("ASR_PROVIDER", "whisper") as "whisper" | "doubao",
   asrModel: readEnv("ASR_MODEL", "whisper-1"),
