@@ -197,6 +197,7 @@ export async function handleIncomingFeishuMessage(input: {
   }
 
   if (isWeeklyTestCommand(input.text)) {
+    await sendFeishuText(input.openId, "收到，正在生成本周测试推送。视频转写需要一点时间，稍后会发卡片。");
     await summarizeUserSavedItems(user, {
       openId: input.openId,
       mode: "weekly",
@@ -262,7 +263,7 @@ export async function summarizeUserSavedItems(user: User, options: SummarizeUser
   }
 
   try {
-    const enrichedItems = await enrichItemsWithAsr(user, items, Math.max(config.asrSummaryMaxItems, maxSuggestions));
+    const enrichedItems = await enrichItemsWithAsr(user, items, config.asrSummaryMaxItems);
     const result = await summarizeSavedItems(enrichedItems, { mode, maxSuggestions });
     const suggestions = enrichUniqueSuggestions(enrichedItems, result.suggestions, maxSuggestions);
     if (!suggestions.length) throw new Error("No summary suggestions generated");
