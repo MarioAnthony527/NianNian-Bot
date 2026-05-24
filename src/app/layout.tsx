@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "念念",
-  description: "把抖音视频变成可兑现的承诺",
+  description: "把被遗忘的抖音收藏整理成可回看的 AI 提醒",
 };
 
 export default function RootLayout({

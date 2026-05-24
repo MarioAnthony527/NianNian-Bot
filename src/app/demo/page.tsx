@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { listCommitments } from "@/lib/db";
+import { listSavedItems } from "@/lib/db";
 import { relativeTime } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -11,35 +11,41 @@ type PageProps = {
 
 export default async function DemoPage({ searchParams }: PageProps) {
   const { token } = await searchParams;
-  const commitments = await listCommitments({ token, status: "pending" });
+  const savedItems = await listSavedItems({ token, limit: 20 });
   const tokenQuery = token ? `?token=${token}` : "";
 
   return (
     <main className="mx-auto min-h-screen max-w-3xl px-4 py-6 sm:px-6">
       <Link href={`/${tokenQuery}`} className="inline-flex items-center gap-2 text-sm text-zinc-600 hover:text-zinc-950">
         <ArrowLeft className="h-4 w-4" />
-        返回承诺台
+        返回控制台
       </Link>
 
       <header className="mt-6">
-        <h1 className="text-2xl font-semibold tracking-normal text-zinc-950">演示控制台</h1>
+        <h1 className="text-2xl font-semibold tracking-normal text-zinc-950">现场演示台</h1>
         <p className="mt-2 text-sm leading-6 text-zinc-600">
-          当前流程中，飞书发送“总结”会直接生成并推送内容。这里仅保留等待中的承诺列表用于核对。
+          这里展示当前还没被总结的数据列表。给飞书机器人发送抖音链接后会进入这里；发送“测试”会模拟每周五晚 8 点的自动推送。
         </p>
       </header>
 
       <div className="mt-6 space-y-3">
-        {commitments.map((item) => (
-          <div key={item.id} className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-medium text-zinc-950">{item.commitment_summary}</p>
-              <p className="mt-1 text-sm text-zinc-500">{item.estimated_cost} · {relativeTime(item.created_at)}</p>
-            </div>
-          </div>
+        {savedItems.map((item) => (
+          <a
+            key={item.id}
+            href={item.original_url || item.normalized_url}
+            target="_blank"
+            rel="noreferrer"
+            className="block rounded-lg border border-zinc-200 bg-white p-4 hover:border-zinc-300 hover:bg-zinc-50"
+          >
+            <p className="line-clamp-1 font-medium text-zinc-950">
+              {item.title || item.description || item.raw_share_text || "未命名抖音收藏"}
+            </p>
+            <p className="mt-1 text-sm text-zinc-500">{relativeTime(item.created_at)}</p>
+          </a>
         ))}
-        {!commitments.length ? (
+        {!savedItems.length ? (
           <div className="rounded-lg border border-dashed border-zinc-200 bg-white/70 p-6 text-sm text-zinc-500">
-            暂时没有等待中的承诺。先从飞书发一条抖音链接给机器人。
+            暂时没有待整理内容。先在飞书里发几条抖音链接给念念，再发送“测试”触发推送。
           </div>
         ) : null}
       </div>

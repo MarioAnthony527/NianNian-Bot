@@ -123,6 +123,28 @@ export async function listSavedItemsForUser(userId: string) {
   return data ?? [];
 }
 
+export async function listSavedItems(filters?: { token?: string; limit?: number }) {
+  const supabase = supabaseAdmin();
+  let query = supabase.from("saved_items").select("*").order("created_at", { ascending: false });
+
+  if (filters?.token) {
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("id")
+      .eq("dashboard_token", filters.token)
+      .maybeSingle<{ id: string }>();
+    if (error) throw error;
+    if (!user) return [];
+    query = query.eq("user_id", user.id);
+  }
+
+  if (filters?.limit) query = query.limit(filters.limit);
+
+  const { data, error } = await query.returns<SavedItem[]>();
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function countSavedItemsForUser(userId: string) {
   const supabase = supabaseAdmin();
   const { count, error } = await supabase
