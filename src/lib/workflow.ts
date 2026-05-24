@@ -12,17 +12,34 @@ import {
   snoozeCommitment,
   updateCommitmentStatus,
   updateReminderResponse,
+  updateSavedItemRawMetadata,
   upsertSavedItem,
   upsertVideo,
 } from "@/lib/db";
+import { config } from "@/lib/config";
 import { DEFAULT_FOLDER } from "@/lib/constants";
 import { extractUrls, parseDouyinUrl } from "@/lib/douyin";
 import { reminderCard, sendFeishuCard, sendFeishuText, summaryPushCard, summaryPushText } from "@/lib/feishu";
 import { generateReminderCopy, summarizeSavedItems } from "@/lib/llm";
+import { transcribeClip } from "@/lib/asr";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { AnalyzeResult, ParsedDouyin, SavedItem, SummarySuggestion, User } from "@/lib/types";
 
 const SUMMARY_COMMANDS = new Set(["总结", "总结一下", "整理", "整理一下", "生成提醒", "生成推送"]);
+
+function metadataString(item: SavedItem, key: string) {
+  const value = item.raw_metadata?.[key];
+  return typeof value === "string" ? value : "";
+}
+
+function metadataNumber(item: SavedItem, key: string) {
+  const value = item.raw_metadata?.[key];
+  return typeof value === "number" ? value : null;
+}
+
+function isNoteLink(url: string) {
+  return /\/(?:share\/)?note\//.test(url);
+}
 
 function isSummaryCommand(text: string) {
   const normalized = text.replace(/[\s。.!！]/g, "");
@@ -39,7 +56,9 @@ function savedItemToParsed(item: SavedItem): ParsedDouyin {
     author: item.author || "",
     coverUrl: item.cover_url,
     tags: item.tags ?? [],
-    asrText: item.raw_share_text || item.description || "",
+    asrText: metadataString(item, "asrText") || "",
+    playAddr: metadataString(item, "playAddr") || null,
+    durationMs: metadataNumber(item, "durationMs"),
     rawMetadata: item.raw_metadata ?? {},
   };
 }
@@ -74,6 +93,58 @@ function enrichUniqueSuggestions(items: SavedItem[], suggestions: SummarySuggest
       video_url: source.normalized_url || source.original_url,
     });
     if (enriched.length >= maxCount) break;
+  }
+
+  return enriched;
+}
+
+async function enrichItemsWithAsr(user: User, items: SavedItem[]) {
+  const maxItems = Math.max(0, config.asrSummaryMaxItems);
+  if (!config.enableAsr || maxItems === 0) return items;
+
+  const enriched = [...items];
+  let attempted = 0;
+  let transcribed = 0;
+
+  for (let index = 0; index < enriched.length && attempted < maxItems; index += 1) {
+    const item = enriched[index];
+    if (metadataString(item, "asrText")) continue;
+    if (isNoteLink(item.normalized_url) || isNoteLink(item.original_url)) continue;
+
+    const playAddr = metadataString(item, "playAddr");
+    if (!playAddr) continue;
+
+    attempted += 1;
+    const transcript = await transcribeClip(playAddr);
+    const rawMetadata = {
+      ...(item.raw_metadata ?? {}),
+      asrSource: transcript.source,
+      asrSkipReason: transcript.skipReason,
+      asrBytes: transcript.bytesDownloaded,
+      asrTruncated: transcript.truncated,
+      asrCheckedAt: new Date().toISOString(),
+      ...(transcript.text ? { asrText: transcript.text } : {}),
+    };
+
+    try {
+      enriched[index] = await updateSavedItemRawMetadata(user.id, item.id, rawMetadata);
+    } catch (error) {
+      enriched[index] = { ...item, raw_metadata: rawMetadata };
+      await logEvent(user.id, "saved_item_asr_cache_failed", {
+        saved_item_id: item.id,
+        message: unknownErrorMessage(error),
+      });
+    }
+
+    if (transcript.text) transcribed += 1;
+  }
+
+  if (attempted > 0) {
+    await logEvent(user.id, "saved_items_asr_enriched", {
+      item_count: items.length,
+      attempted,
+      transcribed,
+    });
   }
 
   return enriched;
@@ -123,9 +194,11 @@ export async function handleIncomingFeishuMessage(input: {
 
     await sendFeishuText(
       input.openId,
-      created
-        ? `已添加到数据列表。当前 ${count} 条。发送“总结”即可生成推送内容。`
-        : `这条已经在数据列表里。当前 ${count} 条。发送“总结”即可生成推送内容。`,
+      `${created ? "已添加到数据列表。" : "这条已经在数据列表里。"}当前 ${count} 条。发送“总结”即可生成推送内容。${
+        isNoteLink(parsed.normalizedUrl)
+          ? "\n提示：这条可能是图文，MVP 暂不支持图文音频识别，后续总结会以分享文案为准。"
+          : ""
+      }`,
     );
   } catch (error) {
     await logEvent(user.id, "saved_item_failed", {
@@ -149,12 +222,13 @@ async function summarizeCurrentSavedItems(user: User, openId: string) {
   }
 
   try {
-    const result = await summarizeSavedItems(items);
-    const suggestions = enrichUniqueSuggestions(items, result.suggestions);
+    const enrichedItems = await enrichItemsWithAsr(user, items);
+    const result = await summarizeSavedItems(enrichedItems);
+    const suggestions = enrichUniqueSuggestions(enrichedItems, result.suggestions);
     if (!suggestions.length) throw new Error("No summary suggestions generated");
 
     for (const suggestion of suggestions) {
-      const source = sourceItemForSuggestion(items, suggestion.source_index);
+      const source = sourceItemForSuggestion(enrichedItems, suggestion.source_index);
       const video = await upsertVideo(user.id, savedItemToParsed(source));
       const analysis: AnalyzeResult = {
         is_real_commitment: true,
@@ -170,7 +244,7 @@ async function summarizeCurrentSavedItems(user: User, openId: string) {
       await createSentReminder(user.id, commitment.id, suggestion);
     }
 
-    const selectedItemIds = suggestions.map((suggestion) => sourceItemForSuggestion(items, suggestion.source_index).id);
+    const selectedItemIds = suggestions.map((suggestion) => sourceItemForSuggestion(enrichedItems, suggestion.source_index).id);
     const selectedCount = new Set(selectedItemIds).size;
     const remainingCount = Math.max(0, items.length - selectedCount);
 

@@ -124,5 +124,7 @@ export type ParsedDouyin = {
   coverUrl: string | null;
   tags: string[];
   asrText: string;
+  playAddr: string | null;
+  durationMs: number | null;
   rawMetadata: Record<string, unknown>;
 };

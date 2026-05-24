@@ -96,7 +96,12 @@ export async function upsertSavedItem(userId: string, parsed: ParsedDouyin, rawS
       cover_url: parsed.coverUrl,
       tags: parsed.tags,
       raw_share_text: rawShareText,
-      raw_metadata: parsed.rawMetadata,
+      raw_metadata: {
+        ...parsed.rawMetadata,
+        asrText: parsed.asrText,
+        playAddr: parsed.playAddr,
+        durationMs: parsed.durationMs,
+      },
     })
     .select("*")
     .single<SavedItem>();
@@ -164,6 +169,20 @@ export async function deleteSavedItemsByIds(userId: string, ids: string[]) {
   const supabase = supabaseAdmin();
   const { error } = await supabase.from("saved_items").delete().eq("user_id", userId).in("id", uniqueIds);
   if (error) throw error;
+}
+
+export async function updateSavedItemRawMetadata(userId: string, id: string, rawMetadata: Record<string, unknown>) {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase
+    .from("saved_items")
+    .update({ raw_metadata: rawMetadata })
+    .eq("user_id", userId)
+    .eq("id", id)
+    .select("*")
+    .single<SavedItem>();
+
+  if (error) throw error;
+  return data;
 }
 
 export async function createCommitment(

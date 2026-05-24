@@ -65,6 +65,9 @@ function compactText(text: string, fallback: string) {
 }
 
 function compactSavedItem(item: SavedItem, index: number) {
+  const asrText = typeof item.raw_metadata?.asrText === "string" ? item.raw_metadata.asrText : "";
+  const asrSource = typeof item.raw_metadata?.asrSource === "string" ? item.raw_metadata.asrSource : "";
+  const asrSkipReason = typeof item.raw_metadata?.asrSkipReason === "string" ? item.raw_metadata.asrSkipReason : "";
   const sourceText = item.description || item.raw_share_text || item.title || "";
   return {
     index: index + 1,
@@ -73,7 +76,10 @@ function compactSavedItem(item: SavedItem, index: number) {
     author: item.author || "",
     tags: item.tags ?? [],
     share_text: item.raw_share_text || "",
-    cleaned_text: compactText(sourceText, item.title || "这条视频"),
+    cleaned_text: compactText(asrText || sourceText, item.title || "这条视频"),
+    asr_text: asrText.slice(0, 1200),
+    asr_source: asrSource,
+    asr_skip_reason: asrSkipReason,
   };
 }
 
@@ -256,6 +262,7 @@ export async function summarizeSavedItems(items: SavedItem[]): Promise<SummaryRe
 - 每条提醒必须对应一个原始视频，用 source_index 指向下面列表里的 index。
 - 不要编造视频链接，链接由系统根据 source_index 自动补。
 - video_summary 用一句话概括这个视频大致内容，保守基于标题、描述、分享文案。
+- 如果 asr_text 非空，优先参考 asr_text，它是视频前段音频字幕，通常比分享标题更接近真实内容。
 - 忽略分享口令数字、复制提示、作者名、日期时间、平台噪音；不要把日期当成视频内容。
 - 如果只有一条收藏，也要理解 cleaned_text / share_text 后生成自然概括，不要照抄原始分享文案。
 - 如果内容很杂，就选 1-2 条最适合回看的代表视频。
